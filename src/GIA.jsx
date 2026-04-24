@@ -1045,8 +1045,10 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
     const desa = DESAS[i];
     const photoUrl = desaPhotos[desa];
     if (photoUrl) {
+      console.log(`[DEBUG] ${desa} url prefix:`, photoUrl.substring(0, 50));
       const b64 = dataUrlToBase64(photoUrl);
       const mime = dataUrlMime(photoUrl);
+      console.log(`[DEBUG] ${desa} mime:`, mime, "b64 length:", b64.length, "b64 start:", b64.substring(0, 20));
       const ext = mimeToExt(mime);
       const rId = `rId${rIdCounter++}`;
       const partName = `media/img${i + 1}.${ext}`;
