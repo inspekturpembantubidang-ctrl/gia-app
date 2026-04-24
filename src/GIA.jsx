@@ -1693,20 +1693,17 @@ function DesaPortal({ onBack }) {
 
 // Konversi URL foto Google Drive → dataURL (base64) via proxy fetch
 async function urlToDataUrl(url) {
-  // Gunakan Google Drive export URL agar bisa di-fetch lintas-origin
-  const driveId = url.match(/\/d\/([^/?]+)/)?.[1];
-  const fetchUrl = driveId
-    ? `https://drive.google.com/uc?export=download&id=${driveId}`
-    : url;
-  const resp = await fetch(fetchUrl);
-  if (!resp.ok) throw new Error("Gagal mengunduh foto: " + url);
-  const blob = await resp.blob();
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
+  // Ekstrak file ID dari URL Google Drive (lh3.googleusercontent.com/d/ID atau id=ID)
+  const driveId = url.match(/\/d\/([^/?]+)/)?.[1] || url.match(/id=([^&]+)/)?.[1];
+  if (!driveId) throw new Error("Tidak bisa ekstrak Drive ID dari: " + url);
+
+  // Fetch base64 via Apps Script agar bypass CORS
+  const resp = await fetch(`${APPS_SCRIPT_URL}?action=getFotoBase64&fileId=${driveId}`);
+  if (!resp.ok) throw new Error("Gagal fetch Apps Script: " + resp.status);
+  const data = await resp.json();
+  if (!data.success) throw new Error(data.error);
+
+  return `data:${data.mime};base64,${data.base64}`;
 }
 
 function ApipPortal({ onBack }) {
