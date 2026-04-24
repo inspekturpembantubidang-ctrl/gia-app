@@ -1404,7 +1404,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
     if (!globalPhotoStore[key][desa]) globalPhotoStore[key][desa] = [];
     photos.forEach(p => globalPhotoStore[key][desa].push(p.dataUrl));
 
-    if (APPS_SCRIPT_URL !== "PASTE_APPS_SCRIPT_URL_DI_SINI") {
+    if (true) {
       try {
         for (let i = 0; i < photos.length; i++) {
           const p = photos[i];
