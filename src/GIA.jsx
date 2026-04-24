@@ -1690,6 +1690,25 @@ function DesaPortal({ onBack }) {
 }
 
 // ─── APIP PORTAL ─────────────────────────────────────────────────────────────
+
+// Konversi URL foto Google Drive → dataURL (base64) via proxy fetch
+async function urlToDataUrl(url) {
+  // Gunakan Google Drive export URL agar bisa di-fetch lintas-origin
+  const driveId = url.match(/\/d\/([^/?]+)/)?.[1];
+  const fetchUrl = driveId
+    ? `https://drive.google.com/uc?export=download&id=${driveId}`
+    : url;
+  const resp = await fetch(fetchUrl);
+  if (!resp.ok) throw new Error("Gagal mengunduh foto: " + url);
+  const blob = await resp.blob();
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
 function ApipPortal({ onBack }) {
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
@@ -1697,12 +1716,41 @@ function ApipPortal({ onBack }) {
   const [selectedPhotos, setSelectedPhotos] = useState({});
   const [generating, setGenerating] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
   const key = storeKey(jenis, tanggal);
   const storeForKey = jenis && tanggal ? (globalPhotoStore[key] || {}) : {};
   const desasWithPhotos = DESAS.filter(d => (storeForKey[d] || []).length > 0);
   const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
+
+  // ✅ FIX: Fetch foto dari Google Drive setiap kali jenis/tanggal berubah
+  useEffect(() => {
+    if (!jenis || !tanggal) return;
+    const fetchFromDrive = async () => {
+      setLoadingPhotos(true);
+      setSelectedPhotos({});
+      try {
+        const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.success && data.status) {
+          const k = storeKey(jenis, tanggal);
+          if (!globalPhotoStore[k]) globalPhotoStore[k] = {};
+          for (const [desaName, photos] of Object.entries(data.status)) {
+            if (photos && photos.length > 0) {
+              // Simpan URL langsung (bukan dataURL) — konversi ke dataURL hanya saat generate
+              globalPhotoStore[k][desaName] = photos.map(p => p.url);
+            }
+          }
+        }
+      } catch (err) {
+        showToast("Gagal memuat foto dari Drive: " + err.message);
+      }
+      setLoadingPhotos(false);
+    };
+    fetchFromDrive();
+  }, [jenis, tanggal]);
 
   const selectPhoto = (desa, url) => {
     setSelectedPhotos(p => ({ ...p, [desa]: p[desa] === url ? null : url }));
@@ -1717,7 +1765,20 @@ function ApipPortal({ onBack }) {
     if (selectedCount === 0) { showToast("Pilih minimal 1 foto dari 1 desa"); return; }
     setGenerating(true);
     try {
-      await generateDocx(jenis, tanggal, selectedPhotos);
+      // ✅ FIX: Konversi semua URL foto terpilih ke dataURL sebelum generate docx
+      showToast("⏳ Mengunduh foto...");
+      const desaPhotoDataUrls = {};
+      for (const [desa, url] of Object.entries(selectedPhotos)) {
+        if (!url) continue;
+        // Jika sudah dataURL (dari PIC di session sama), langsung pakai
+        if (url.startsWith("data:")) {
+          desaPhotoDataUrls[desa] = url;
+        } else {
+          // Ambil dari Google Drive dan konversi ke dataURL
+          desaPhotoDataUrls[desa] = await urlToDataUrl(url);
+        }
+      }
+      await generateDocx(jenis, tanggal, desaPhotoDataUrls);
       showToast("✅ Laporan berhasil diunduh!");
     } catch (e) {
       showToast("Gagal generate: " + e.message);
@@ -1782,7 +1843,14 @@ function ApipPortal({ onBack }) {
           </div>
         </div>
 
-        {jenis && tanggal && (
+        {jenis && tanggal && loadingPhotos && (
+          <div className="form-card fade-up" style={{ textAlign: "center", padding: "20px", color: "var(--gray)" }}>
+            <div style={{ width: 24, height: 24, border: "3px solid var(--mist)", borderTopColor: "var(--moss)", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 12px" }} />
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Memuat foto dari Google Drive...</div>
+          </div>
+        )}
+
+        {jenis && tanggal && !loadingPhotos && (
           <div className="apip-stats fade-up">
             <div className="stat-card">
               <div className="stat-value">{DESAS.length}</div>
