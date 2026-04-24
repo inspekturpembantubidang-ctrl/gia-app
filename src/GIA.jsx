@@ -1768,8 +1768,10 @@ function ApipPortal({ onBack }) {
     try {
       // ✅ FIX: Konversi semua URL foto terpilih ke dataURL sebelum generate docx
       showToast("⏳ Mengunduh foto...");
+      console.log("[DEBUG] selectedPhotos:", JSON.stringify(selectedPhotos));
       const desaPhotoDataUrls = {};
       for (const [desa, url] of Object.entries(selectedPhotos)) {
+        console.log("[DEBUG] processing desa:", desa, "url:", url ? url.substring(0, 60) : "null");
         if (!url) continue;
         // Jika sudah dataURL (dari PIC di session sama), langsung pakai
         if (url.startsWith("data:")) {
