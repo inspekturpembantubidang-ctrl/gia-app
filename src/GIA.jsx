@@ -1703,7 +1703,9 @@ async function urlToDataUrl(url) {
   const data = await resp.json();
   if (!data.success) throw new Error(data.error);
 
-  return `data:${data.mime};base64,${data.base64}`;
+  // Bersihkan line breaks dari base64 (Apps Script kadang tambahkan newline)
+  const cleanBase64 = data.base64.replace(/\s/g, "");
+  return `data:${data.mime};base64,${cleanBase64}`;
 }
 
 function ApipPortal({ onBack }) {
