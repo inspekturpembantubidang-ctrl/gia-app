@@ -1629,6 +1629,12 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
   const key = storeKey(jenis, tanggal);
+  useEffect(() => {
+    if (!jenis || !tanggal) return;
+    fetch(`${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${tanggal}`).then(r=>r.json()).then(data=>{
+      if(data.success&&data.status){const k=storeKey(jenis,tanggal);if(!globalPhotoStore[k])globalPhotoStore[k]={};Object.entries(data.status).forEach(([d,p]:any)=>{globalPhotoStore[k][d]=(p as any[]).map((x:any)=>x.url);});setSelectedPhotos({});}
+    }).catch(console.error);
+  }, [jenis, tanggal]);
   const storeForKey = jenis && tanggal ? (globalPhotoStore[key] || {}) : {};
   const desasWithPhotos = DESAS.filter(d => (storeForKey[d] || []).length > 0);
   const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
