@@ -1695,18 +1695,24 @@ function DesaPortal({ onBack }) {
 
 // Konversi URL foto Google Drive → dataURL (base64) via proxy fetch
 async function urlToDataUrl(url) {
-  // Ekstrak file ID dari URL Google Drive (lh3.googleusercontent.com/d/ID atau id=ID)
-  const driveId = url.match(/\/d\/([^/?]+)/)?.[1] || url.match(/id=([^&]+)/)?.[1];
+  const driveId =
+    url.match(/\/d\/([a-zA-Z0-9_-]{10,})/)?.[1] ||
+    url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/)?.[1] ||
+    url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)?.[1];
   if (!driveId) throw new Error("Tidak bisa ekstrak Drive ID dari: " + url);
 
   // Fetch base64 via Apps Script agar bypass CORS
-  const resp = await fetch(`${APPS_SCRIPT_URL}?action=getFotoBase64&fileId=${driveId}`);
-  if (!resp.ok) throw new Error("Gagal fetch Apps Script: " + resp.status);
-  const data = await resp.json();
-  if (!data.success) throw new Error(data.error);
-
-  // Bersihkan line breaks dari base64 (Apps Script kadang tambahkan newline)
-  const cleanBase64 = data.base64.replace(/\s/g, "");
+  const fetchUrl = `${APPS_SCRIPT_URL}?action=getFotoBase64&fileId=${encodeURIComponent(driveId)}`;
+  let resp;
+  try { resp = await fetch(fetchUrl); }
+  catch (err) { throw new Error(`Network error: ${err.message}`); }
+  if (!resp.ok) throw new Error(`Apps Script HTTP ${resp.status} — belum di-deploy ulang?`);
+  let data;
+  try { data = await resp.json(); }
+  catch { throw new Error(`Response bukan JSON — Apps Script belum di-deploy ulang!`); }
+  if (!data.success) throw new Error(`GS error: ${data.error || JSON.stringify(data)}`);
+  if (!data.base64 || !data.mime) throw new Error(`base64/mime kosong: ${JSON.stringify(data)}`);
+  const cleanBase64 = data.base64.replace(/[\s\r\n]/g, "");
   return `data:${data.mime};base64,${cleanBase64}`;
 }
 
