@@ -1018,144 +1018,73 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
     });
   }
 
-  const COL_LEFT_TWIPS = 3600;
-  const COL_RIGHT_TWIPS = 10800;
-  const TOTAL_TWIPS = COL_LEFT_TWIPS + COL_RIGHT_TWIPS;
-
-  const FOTO_W_EMU = Math.round(COL_RIGHT_TWIPS * 635);
-  const FOTO_H_EMU = Math.round(FOTO_W_EMU * (9 / 16));
-
-  const COLOR_HEADER = "2D6A4F";
-  const COLOR_ROW_ODD  = "FFFFFF";
-  const COLOR_ROW_EVEN = "D8F3DC";
-
-  function dataUrlToBase64(dataUrl) { return dataUrl.split(",")[1]; }
-  function dataUrlMime(dataUrl) {
-    const m = dataUrl.match(/data:([^;]+);/);
-    return m ? m[1] : "image/jpeg";
-  }
-  function mimeToExt(mime) { return mime === "image/png" ? "png" : "jpeg"; }
-
   const zip = new window.JSZip();
-  const imgRels = [];
-  let rIdCounter = 2;
-  const imageParts = {};
 
-  for (let i = 0; i < DESAS.length; i++) {
-    const desa = DESAS[i];
-    const photoUrl = desaPhotos[desa];
-    if (photoUrl) {
-      console.log(`[DEBUG] ${desa} url prefix:`, photoUrl.substring(0, 50));
-      const b64 = dataUrlToBase64(photoUrl);
-      const mime = dataUrlMime(photoUrl);
-      console.log(`[DEBUG] ${desa} mime:`, mime, "b64 length:", b64.length, "b64 start:", b64.substring(0, 20));
-      const ext = mimeToExt(mime);
-      const rId = `rId${rIdCounter++}`;
-      const partName = `media/img${i + 1}.${ext}`;
-      imgRels.push({ rId, partName, mime });
-      imageParts[partName] = b64;
-    } else {
-      imgRels.push(null);
-    }
+  // Kumpulkan gambar
+  const images = {}; // { desaName: { rId, ext, b64, mime } }
+  let rIdN = 10;
+  for (const desa of DESAS) {
+    const dataUrl = desaPhotos[desa];
+    if (!dataUrl || !dataUrl.startsWith("data:")) continue;
+    const mime = dataUrl.match(/data:([^;]+);/)?.[1] || "image/jpeg";
+    const ext = mime === "image/png" ? "png" : "jpeg";
+    const b64 = dataUrl.split(",")[1];
+    if (!b64 || b64.length < 100) continue;
+    images[desa] = { rId: `rId${rIdN++}`, ext, b64, mime };
   }
 
-  let relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+  // Tambah gambar ke zip
+  for (const desa of DESAS) {
+    const img = images[desa];
+    if (!img) continue;
+    zip.file(`word/media/${safeName(desa)}.${img.ext}`, img.b64, { base64: true });
+  }
+
+  // relationships
+  let rels = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
-  for (const r of imgRels) {
-    if (r) relsXml += `\n  <Relationship Id="${r.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${r.partName}"/>`;
+  for (const desa of DESAS) {
+    const img = images[desa];
+    if (!img) continue;
+    rels += `\n  <Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${safeName(desa)}.${img.ext}"/>`;
   }
-  relsXml += `\n</Relationships>`;
+  rels += `\n</Relationships>`;
 
-  let tableRows = `
-    <w:tr>
-      <w:trPr>
-        <w:trHeight w:val="640" w:hRule="atLeast"/>
-        <w:shd w:val="clear" w:color="auto" w:fill="${COLOR_HEADER}"/>
-      </w:trPr>
-      <w:tc>
-        <w:tcPr>
-          <w:tcW w:w="${COL_LEFT_TWIPS}" w:type="dxa"/>
-          <w:shd w:val="clear" w:color="auto" w:fill="${COLOR_HEADER}"/>
-          <w:vAlign w:val="center"/>
-          <w:tcMar>
-            <w:top w:w="80" w:type="dxa"/>
-            <w:left w:w="120" w:type="dxa"/>
-            <w:bottom w:w="80" w:type="dxa"/>
-            <w:right w:w="120" w:type="dxa"/>
-          </w:tcMar>
-        </w:tcPr>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="26"/></w:rPr>
-            <w:t>NAMA DESA / KELURAHAN</w:t>
-          </w:r>
-        </w:p>
-      </w:tc>
-      <w:tc>
-        <w:tcPr>
-          <w:tcW w:w="${COL_RIGHT_TWIPS}" w:type="dxa"/>
-          <w:shd w:val="clear" w:color="auto" w:fill="${COLOR_HEADER}"/>
-          <w:vAlign w:val="center"/>
-          <w:tcMar>
-            <w:top w:w="80" w:type="dxa"/>
-            <w:left w:w="120" w:type="dxa"/>
-            <w:bottom w:w="80" w:type="dxa"/>
-            <w:right w:w="120" w:type="dxa"/>
-          </w:tcMar>
-        </w:tcPr>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="26"/></w:rPr>
-            <w:t>DOKUMENTASI FOTO</w:t>
-          </w:r>
-        </w:p>
-      </w:tc>
-    </w:tr>`;
+  // Helper: escape XML
+  const xe = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 
-  for (let i = 0; i < DESAS.length; i++) {
-    const desa = DESAS[i];
-    const bg = i % 2 === 0 ? COLOR_ROW_ODD : COLOR_ROW_EVEN;
-    const rel = imgRels[i];
+  // Dimensi gambar (EMU): lebar penuh kolom kanan, rasio 4:3
+  const W = 6400000;
+  const H = 4800000;
 
-    let photoCell;
-    if (rel) {
-      photoCell = `
+  // Buat baris tabel per desa
+  const rows = DESAS.map((desa, i) => {
+    const bg = i % 2 === 0 ? "FFFFFF" : "D8F3DC";
+    const img = images[desa];
+    const photoCell = img ? `
       <w:tc>
-        <w:tcPr>
-          <w:tcW w:w="${COL_RIGHT_TWIPS}" w:type="dxa"/>
-          <w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>
-          <w:vAlign w:val="center"/>
-          <w:tcMar>
-            <w:top w:w="0" w:type="dxa"/>
-            <w:left w:w="0" w:type="dxa"/>
-            <w:bottom w:w="0" w:type="dxa"/>
-            <w:right w:w="0" w:type="dxa"/>
-          </w:tcMar>
-        </w:tcPr>
+        <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
         <w:p>
           <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/></w:pPr>
           <w:r>
-            <w:rPr><w:noProof/></w:rPr>
             <w:drawing>
-              <wp:inline distT="0" distB="0" distL="0" distR="0"
-                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-                <wp:extent cx="${FOTO_W_EMU}" cy="${FOTO_H_EMU}"/>
-                <wp:docPr id="${i + 10}" name="Foto${i + 1}"/>
+              <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+                <wp:extent cx="${W}" cy="${H}"/>
+                <wp:docPr id="${i+1}" name="img${i+1}"/>
                 <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                   <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
                     <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
                       <pic:nvPicPr>
-                        <pic:cNvPr id="${i + 10}" name="Foto${i + 1}"/>
-                        <pic:cNvPicPr><a:picLocks noChangeAspectRatio="1"/></pic:cNvPicPr>
+                        <pic:cNvPr id="${i+1}" name="img${i+1}"/>
+                        <pic:cNvPicPr/>
                       </pic:nvPicPr>
                       <pic:blipFill>
-                        <a:blip r:embed="${rel.rId}"
-                          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+                        <a:blip r:embed="${img.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
                         <a:stretch><a:fillRect/></a:stretch>
                       </pic:blipFill>
                       <pic:spPr>
-                        <a:xfrm><a:off x="0" y="0"/><a:ext cx="${FOTO_W_EMU}" cy="${FOTO_H_EMU}"/></a:xfrm>
+                        <a:xfrm><a:off x="0" y="0"/><a:ext cx="${W}" cy="${H}"/></a:xfrm>
                         <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                       </pic:spPr>
                     </pic:pic>
@@ -1165,530 +1094,144 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
             </w:drawing>
           </w:r>
         </w:p>
-      </w:tc>`;
-    } else {
-      photoCell = `
+      </w:tc>` : `
       <w:tc>
-        <w:tcPr>
-          <w:tcW w:w="${COL_RIGHT_TWIPS}" w:type="dxa"/>
-          <w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>
-          <w:vAlign w:val="center"/>
-          <w:tcMar>
-            <w:top w:w="80" w:type="dxa"/>
-            <w:left w:w="120" w:type="dxa"/>
-            <w:bottom w:w="80" w:type="dxa"/>
-            <w:right w:w="120" w:type="dxa"/>
-          </w:tcMar>
-        </w:tcPr>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="18"/><w:i/></w:rPr>
-            <w:t>[ Tidak ada foto ]</w:t>
-          </w:r>
+        <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
+        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+          <w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto ]</w:t></w:r>
         </w:p>
       </w:tc>`;
-    }
 
-    tableRows += `
-    <w:tr>
-      <w:trPr>
-        <w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>
-      </w:trPr>
+    return `<w:tr>
       <w:tc>
-        <w:tcPr>
-          <w:tcW w:w="${COL_LEFT_TWIPS}" w:type="dxa"/>
-          <w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>
-          <w:vAlign w:val="center"/>
-          <w:tcMar>
-            <w:top w:w="100" w:type="dxa"/>
-            <w:left w:w="160" w:type="dxa"/>
-            <w:bottom w:w="100" w:type="dxa"/>
-            <w:right w:w="160" w:type="dxa"/>
-          </w:tcMar>
-        </w:tcPr>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/><w:spacing w:before="60" w:after="40"/></w:pPr>
-          <w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="1A3A2A"/></w:rPr>
-            <w:t>${i + 1}. ${desa}</w:t>
-          </w:r>
+        <w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/><w:vAlign w:val="center"/></w:tcPr>
+        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+          <w:r><w:rPr><w:b/><w:sz w:val="22"/></w:rPr><w:t>${xe(`${i+1}. ${desa}`)}</w:t></w:r>
         </w:p>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="40"/></w:pPr>
-          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-            <w:t>${jenis.replace(/'/g, "&apos;")}</w:t>
-          </w:r>
+        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr><w:t>${xe(jenis)}</w:t></w:r>
         </w:p>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
-          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-            <w:t>${formatDate(tanggal)}</w:t>
-          </w:r>
+        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr><w:t>${xe(formatDate(tanggal))}</w:t></w:r>
         </w:p>
       </w:tc>
       ${photoCell}
     </w:tr>`;
-  }
-
-  const GREEN_DARK = "1A3A2A";
+  }).join("\n");
 
   const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document
-  xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-  xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
   xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
-  mc:Ignorable="w14">
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <w:body>
     <w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
-      <w:r>
-        <w:rPr><w:b/><w:color w:val="${COLOR_HEADER}"/><w:sz w:val="52"/></w:rPr>
-      <w:t>${jenis.toUpperCase().replace(/'/g, "&apos;")}</w:t>  
+      <w:pPr><w:jc w:val="center"/></w:pPr>
+      <w:r><w:rPr><w:b/><w:color w:val="2D6A4F"/><w:sz w:val="48"/></w:rPr>
+        <w:t>${xe(jenis.toUpperCase())}</w:t>
       </w:r>
     </w:p>
     <w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="200"/></w:pPr>
-      <w:r>
-        <w:rPr><w:color w:val="555555"/><w:sz w:val="26"/></w:rPr>
-        <w:t>${formatDate(tanggal)} — Kecamatan Siantan</w:t>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:after="200"/></w:pPr>
+      <w:r><w:rPr><w:color w:val="555555"/><w:sz w:val="24"/></w:rPr>
+        <w:t>${xe(formatDate(tanggal))} — Kecamatan Siantan</w:t>
       </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:spacing w:after="60"/></w:pPr>
+      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DISUSUN OLEH    :    ${xe(TEMPLATE.penyusun)}</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:spacing w:after="60"/></w:pPr>
+      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DIREVIU OLEH    :    ${xe(TEMPLATE.pereviu)}</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:spacing w:after="200"/></w:pPr>
+      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DISETUJUI OLEH  :    ${xe(TEMPLATE.penyetuju)}</w:t></w:r>
     </w:p>
     <w:tbl>
       <w:tblPr>
-        <w:tblW w:w="${TOTAL_TWIPS}" w:type="dxa"/>
+        <w:tblW w:w="14400" w:type="dxa"/>
         <w:tblBorders>
-          <w:top    w:val="single" w:sz="6" w:space="0" w:color="${GREEN_DARK}"/>
-          <w:left   w:val="single" w:sz="6" w:space="0" w:color="${GREEN_DARK}"/>
-          <w:bottom w:val="single" w:sz="6" w:space="0" w:color="${GREEN_DARK}"/>
-          <w:right  w:val="single" w:sz="6" w:space="0" w:color="${GREEN_DARK}"/>
-          <w:insideH w:val="single" w:sz="4" w:space="0" w:color="${GREEN_DARK}"/>
-          <w:insideV w:val="single" w:sz="4" w:space="0" w:color="${GREEN_DARK}"/>
-        </w:tblBorders>
-        <w:tblCellMar>
-          <w:top    w:w="0" w:type="dxa"/>
-          <w:left   w:w="0" w:type="dxa"/>
-          <w:bottom w:w="0" w:type="dxa"/>
-          <w:right  w:w="0" w:type="dxa"/>
-        </w:tblCellMar>
-      </w:tblPr>
-      <w:tblGrid>
-        <w:gridCol w:w="${COL_LEFT_TWIPS}"/>
-        <w:gridCol w:w="${COL_RIGHT_TWIPS}"/>
-      </w:tblGrid>
-      ${tableRows}
-    </w:tbl>
-    <w:p><w:pPr><w:spacing w:before="360" w:after="0"/></w:pPr></w:p>
-    <w:tbl>
-      <w:tblPr>
-        <w:tblW w:w="${TOTAL_TWIPS}" w:type="dxa"/>
-        <w:tblBorders>
-          <w:top w:val="none"/><w:left w:val="none"/>
-          <w:bottom w:val="none"/><w:right w:val="none"/>
-          <w:insideH w:val="none"/><w:insideV w:val="none"/>
+          <w:top w:val="single" w:sz="6" w:color="1A3A2A"/>
+          <w:left w:val="single" w:sz="6" w:color="1A3A2A"/>
+          <w:bottom w:val="single" w:sz="6" w:color="1A3A2A"/>
+          <w:right w:val="single" w:sz="6" w:color="1A3A2A"/>
+          <w:insideH w:val="single" w:sz="4" w:color="1A3A2A"/>
+          <w:insideV w:val="single" w:sz="4" w:color="1A3A2A"/>
         </w:tblBorders>
       </w:tblPr>
       <w:tblGrid>
-        <w:gridCol w:w="4800"/>
-        <w:gridCol w:w="4800"/>
-        <w:gridCol w:w="4800"/>
+        <w:gridCol w:w="3600"/>
+        <w:gridCol w:w="10800"/>
       </w:tblGrid>
       <w:tr>
         <w:tc>
-          <w:tcPr><w:tcW w:w="4800" w:type="dxa"/></w:tcPr>
+          <w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="2D6A4F"/></w:tcPr>
           <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-            <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-              <w:t>Disusun Oleh,</w:t>
-            </w:r>
-          </w:p>
-          <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="960"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:u w:val="single"/><w:color w:val="${GREEN_DARK}"/></w:rPr>
-              <w:t>${TEMPLATE.penyusun}</w:t>
-            </w:r>
+            <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="24"/></w:rPr><w:t>NAMA DESA</w:t></w:r>
           </w:p>
         </w:tc>
         <w:tc>
-          <w:tcPr><w:tcW w:w="4800" w:type="dxa"/></w:tcPr>
+          <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="2D6A4F"/></w:tcPr>
           <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-            <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-              <w:t>Direviu Oleh,</w:t>
-            </w:r>
-          </w:p>
-          <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="960"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:u w:val="single"/><w:color w:val="${GREEN_DARK}"/></w:rPr>
-              <w:t>${TEMPLATE.pereviu}</w:t>
-            </w:r>
-          </w:p>
-        </w:tc>
-        <w:tc>
-          <w:tcPr><w:tcW w:w="4800" w:type="dxa"/></w:tcPr>
-          <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-            <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-              <w:t>Disetujui Oleh,</w:t>
-            </w:r>
-          </w:p>
-          <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="960"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:u w:val="single"/><w:color w:val="${GREEN_DARK}"/></w:rPr>
-              <w:t>${TEMPLATE.penyetuju}</w:t>
-            </w:r>
+            <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="24"/></w:rPr><w:t>DOKUMENTASI FOTO</w:t></w:r>
           </w:p>
         </w:tc>
       </w:tr>
+      ${rows}
     </w:tbl>
+    <w:p><w:pPr><w:spacing w:before="400"/></w:pPr></w:p>
     <w:sectPr>
       <w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>
-      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"
-               w:header="0" w:footer="0" w:gutter="0"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
     </w:sectPr>
   </w:body>
 </w:document>`;
 
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.file("word/document.xml", docXml);
+  zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:docDefaults>
-    <w:rPrDefault>
-      <w:rPr>
-        <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
-        <w:sz w:val="22"/>
-        <w:lang w:val="id-ID"/>
-      </w:rPr>
-    </w:rPrDefault>
-    <w:pPrDefault>
-      <w:pPr>
-        <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
-      </w:pPr>
-    </w:pPrDefault>
+    <w:rPrDefault><w:rPr>
+      <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
+      <w:sz w:val="22"/>
+    </w:rPr></w:rPrDefault>
+    <w:pPrDefault><w:pPr>
+      <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
+    </w:pPr></w:pPrDefault>
   </w:docDefaults>
-</w:styles>`;
-
-  zip.folder("word");
-  zip.folder("word/media");
-  zip.folder("word/_rels");
-  zip.folder("_rels");
-
-  zip.file("word/document.xml", docXml);
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/_rels/document.xml.rels", relsXml);
-
-  for (const [name, b64] of Object.entries(imageParts)) {
-    zip.file(`word/${name}`, b64, { base64: true });
-  }
-
+</w:styles>`);
+  zip.file("word/_rels/document.xml.rels", rels);
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Default Extension="jpeg" ContentType="image/jpeg"/>
-  <Default Extension="jpg" ContentType="image/jpeg"/>
   <Default Extension="png" ContentType="image/png"/>
-  <Override PartName="/word/document.xml"
-    ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml"
-    ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`);
-
   zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1"
-    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
-    Target="word/document.xml"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`);
 
-  const blob = await zip.generateAsync({
-    type: "blob",
-    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 }
-  });
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression: "DEFLATE" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.docx`;
+  a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g,"_")}_${tanggal}.docx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-// ─── ROLE SELECTOR ────────────────────────────────────────────────────────────
-function RoleSelector({ onSelect }) {
-  return (
-    <div className="role-bg">
-      <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: 640, width: "100%" }}>
-        <div className="brand-badge">
-          <span className="msymbol sm" style={{ color: "var(--mist)" }}>eco</span>
-          Gerakan Indonesia Asri
-        </div>
-        <h1 className="role-title">
-          Dokumentasi<br /><em>Kebersihan Desa</em>
-        </h1>
-        <p className="role-subtitle">
-          Platform terpadu untuk mencatat dan merekap kegiatan Jum'at Bersih & Selasa Goro Kecamatan Siantan.
-        </p>
-        <div className="role-cards">
-          <div className="role-card" onClick={() => onSelect("pic")}>
-            <div className="role-icon" style={{ background: "rgba(82,183,136,0.2)" }}>
-              <span className="msymbol lg" style={{ color: "var(--sage)" }}>upload</span>
-            </div>
-            <div>
-              <div className="role-card-title">Portal<br />PIC Desa</div>
-              <div className="role-card-desc">Upload foto dokumentasi kegiatan kebersihan di wilayah Anda</div>
-            </div>
-            <div className="role-arrow">
-              Masuk <span className="msymbol sm">arrow_forward</span>
-            </div>
-          </div>
-          <div className="role-card" onClick={() => onSelect("apip")}>
-            <div className="role-icon" style={{ background: "rgba(233,196,106,0.2)" }}>
-              <span className="msymbol lg" style={{ color: "var(--gold)" }}>assignment</span>
-            </div>
-            <div>
-              <div className="role-card-title">Portal<br />APIP</div>
-              <div className="role-card-desc">Tinjau foto dari semua desa dan generate laporan rekap .docx</div>
-            </div>
-            <div className="role-arrow" style={{ color: "var(--gold)" }}>
-              Masuk <span className="msymbol sm">arrow_forward</span>
-            </div>
-          </div>
-        </div>
-        <a className="wa-link" href="https://wa.me/6281267426804" target="_blank" rel="noopener noreferrer">
-          <span className="msymbol sm">phone</span>
-          Koordinator: Yopi Palintino, S.T. — 0812-6742-6804
-        </a>
-      </div>
-    </div>
-  );
-}
-
-// ─── PIC DESA PORTAL ─────────────────────────────────────────────────────────
-function DesaPortal({ onBack }) {
-  const [desa, setDesa] = useState("");
-  const [jenis, setJenis] = useState("");
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
-  const [photos, setPhotos] = useState([]);
-  const [screen, setScreen] = useState("form");
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const [successPath, setSuccessPath] = useState("");
-  const [dragOver, setDragOver] = useState(false);
-  const [lightbox, setLightbox] = useState(null);
-  const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
-
-  const handleFiles = useCallback(async (files) => {
-    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024);
-    const tooLarge = Array.from(files).filter(f => f.size > 5 * 1024 * 1024);
-    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 5MB)`);
-    const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
-    setPhotos(p => [...p, ...newPhotos].slice(0, 10));
-  }, [showToast]);
-
-  const removePhoto = (i) => setPhotos(p => p.filter((_, idx) => idx !== i));
-
-  const handleSubmit = async () => {
-    if (!desa || !jenis || !tanggal) { showToast("Lengkapi semua data terlebih dahulu"); return; }
-    if (photos.length === 0) { showToast("Upload minimal 1 foto"); return; }
-
-    setScreen("uploading");
-    setUploadProgress({ current: 0, total: photos.length });
-
-    // Simpan ke in-memory store untuk APIP portal
-    const key = storeKey(jenis, tanggal);
-    if (!globalPhotoStore[key]) globalPhotoStore[key] = {};
-    if (!globalPhotoStore[key][desa]) globalPhotoStore[key][desa] = [];
-    photos.forEach(p => globalPhotoStore[key][desa].push(p.dataUrl));
-
-    try {
-      for (let i = 0; i < photos.length; i++) {
-        const p = photos[i];
-        const b64 = await fileToBase64(p.file);
-        const payload = {
-          desa,
-          jenis,
-          tanggal,
-          filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.${p.file.name.split(".").pop()}`,
-          mimeType: p.file.type,
-          base64: b64,
-        };
-
-        // ✅ FIX: mode "no-cors" agar tidak kena CORS error
-        // Response tidak bisa dibaca browser, tapi file tetap terkirim ke Google Drive
-        await fetch(APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          body: JSON.stringify(payload),
-        });
-
-        setUploadProgress({ current: i + 1, total: photos.length });
-      }
-
-      setSuccessPath(`GIA Kecamatan Siantan / ${jenis} / ${tanggal} / ${desa}`);
-      setScreen("success");
-
-    } catch (e) {
-      // Error hanya terjadi jika benar-benar gagal kirim (misal: offline)
-      showToast("Gagal mengirim. Pastikan koneksi internet stabil.");
-      setScreen("form");
-    }
-  };
-
-  const reset = () => { setPhotos([]); setScreen("form"); setUploadProgress({ current: 0, total: 0 }); };
-
-  if (screen === "uploading") {
-    const pct = uploadProgress.total ? Math.round((uploadProgress.current / uploadProgress.total) * 100) : 0;
-    return (
-      <div className="app-shell">
-        <div className="overlay">
-          <div className="overlay-card scale-in">
-            <div className="spinner" />
-            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--pine)", marginBottom: 8 }}>Mengirim Foto...</div>
-            <div style={{ fontSize: 13, color: "var(--gray)", marginBottom: 16 }}>{uploadProgress.current} dari {uploadProgress.total} foto</div>
-            <div className="progress-wrap"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
-            <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 8 }}>{pct}%</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (screen === "success") {
-    return (
-      <div className="app-shell">
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div className="status-card scale-in" style={{ maxWidth: 420, width: "100%" }}>
-            <div className="status-icon" style={{ background: "var(--foam)", border: "2px solid var(--mist)" }}>
-              <span className="msymbol xl filled" style={{ color: "var(--sage)" }}>check_circle</span>
-            </div>
-            <div className="status-title">Foto Berhasil Terkirim!</div>
-            <div className="status-sub">{uploadProgress.total} foto dari <strong>{desa}</strong> berhasil tersimpan.</div>
-            <div className="path-pill">📁 {successPath}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button className="btn-primary" onClick={reset}>
-                <span className="msymbol sm">add_a_photo</span> Upload Foto Lagi
-              </button>
-              <button className="btn-primary btn-outline" onClick={onBack}>
-                <span className="msymbol sm">home</span> Kembali ke Beranda
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="app-shell">
-      {lightbox && (
-        <Lightbox
-          src={lightbox.url}
-          caption={`Foto ${lightbox.idx + 1}`}
-          onClose={() => setLightbox(null)}
-        />
-      )}
-      <header className="topbar">
-        <button className="back-btn" onClick={onBack}>
-          <span className="msymbol sm">arrow_back</span> Beranda
-        </button>
-        <div className="topbar-brand">
-          <div className="topbar-brand-dot" />
-          Gerakan Indonesia Asri
-        </div>
-        <div className="role-pill">PIC Desa</div>
-      </header>
-
-      <div className="content-area fade-up">
-        <div className="page-header">
-          <div className="page-header-chip">
-            <span className="msymbol sm">upload</span>
-            Petugas Lapangan
-          </div>
-          <h2 className="page-header-title">Portal PIC Desa</h2>
-          <p className="page-header-sub">Dokumentasikan kegiatan kebersihan di wilayah Anda.</p>
-        </div>
-
-        <div className="form-card">
-          <div className="form-section-title">
-            <span className="msymbol sm">location_on</span> Data Kegiatan
-          </div>
-          <div className="field-group">
-            <label className="field-label">Pilih Desa / Kelurahan</label>
-            <div className="select-wrap">
-              <select className="field-select" value={desa} onChange={e => setDesa(e.target.value)}>
-                <option value="">— Pilih wilayah kerja —</option>
-                {DESAS.map(d => <option key={d}>{d}</option>)}
-              </select>
-              <span className="msymbol">expand_more</span>
-            </div>
-          </div>
-          <div className="grid-2">
-            <div className="field-group">
-              <label className="field-label">Jenis Kegiatan</label>
-              <div className="select-wrap">
-                <select className="field-select" value={jenis} onChange={e => setJenis(e.target.value)}>
-                  <option value="">— Pilih kategori —</option>
-                  {JENIS_KEGIATAN.map(j => <option key={j}>{j}</option>)}
-                </select>
-                <span className="msymbol">cleaning_services</span>
-              </div>
-            </div>
-            <div className="field-group">
-              <label className="field-label">Tanggal Pelaksanaan</label>
-              <input type="date" className="field-input" value={tanggal} onChange={e => setTanggal(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        <div className="form-card">
-          <div className="form-section-title">
-            <span className="msymbol sm">photo_library</span> Foto Dokumentasi
-            {photos.length > 0 && (
-              <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--moss)", fontWeight: 700, textTransform: "none", letterSpacing: 0 }}>
-                {photos.length} foto
-              </span>
-            )}
-          </div>
-
-          <div
-            className={`dropzone${dragOver ? " drag-over" : ""}`}
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-          >
-            <input type="file" accept="image/*" multiple onChange={e => handleFiles(e.target.files)} />
-            <div className="dropzone-icon">
-              <span className="msymbol lg" style={{ color: "var(--sage)" }}>add_a_photo</span>
-            </div>
-            <div className="dropzone-title">Tarik foto ke sini atau klik untuk memilih</div>
-            <div className="dropzone-sub">Maks 10 foto · JPG, PNG · Maks 5MB per file</div>
-          </div>
-
-          {photos.length > 0 && (
-            <div className="photo-grid">
-              {photos.map((p, i) => (
-                <div key={i} className="photo-thumb" onClick={() => setLightbox({ url: p.dataUrl, idx: i })}>
-                  <img src={p.dataUrl} alt={`foto-${i + 1}`} />
-                  <button className="photo-thumb-remove" type="button"
-                    onClick={e => { e.stopPropagation(); removePhoto(i); }}>
-                    <span className="msymbol sm">close</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <button className="btn-primary" onClick={handleSubmit}>
-          <span className="msymbol sm filled">send</span>
-          Kirim Laporan Foto
-        </button>
-        <p style={{ textAlign: "center", fontSize: 12, color: "var(--gray)", marginTop: 10 }}>
-          Pastikan data yang Anda masukkan sudah benar sebelum mengirim.
-        </p>
-      </div>
-
-      <div className={`toast${toastVisible ? " show" : ""}`}>{toastMsg}</div>
-    </div>
-  );
+function safeName(s) {
+  return s.replace(/[^a-zA-Z0-9]/g, "_");
 }
 
 // ─── APIP PORTAL ─────────────────────────────────────────────────────────────
