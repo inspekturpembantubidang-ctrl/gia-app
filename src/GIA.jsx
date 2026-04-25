@@ -1215,7 +1215,7 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
         <w:p>
           <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="40"/></w:pPr>
           <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr>
-            <w:t>${jenis}</w:t>
+            <w:t>${jenis.replace(/'/g, "&apos;")}</w:t>
           </w:r>
         </w:p>
         <w:p>
@@ -1246,7 +1246,7 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
       <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
       <w:r>
         <w:rPr><w:b/><w:color w:val="${COLOR_HEADER}"/><w:sz w:val="52"/></w:rPr>
-        <w:t>${jenis.toUpperCase()}</w:t>
+      <w:t>${jenis.toUpperCase().replace(/'/g, "&apos;")}</w:t>  
       </w:r>
     </w:p>
     <w:p>
