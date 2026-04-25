@@ -1773,25 +1773,23 @@ function ApipPortal({ onBack }) {
     setGenerating(true);
     try {
       // ✅ FIX: Konversi semua URL foto terpilih ke dataURL sebelum generate docx
-      showToast("⏳ Mengunduh foto...");
-      console.log("[DEBUG] selectedPhotos:", JSON.stringify(selectedPhotos));
+    const desaList = Object.entries(selectedPhotos).filter(([, url]) => !!url);
       const desaPhotoDataUrls = {};
-      for (const [desa, url] of Object.entries(selectedPhotos)) {
-        console.log("[DEBUG] processing desa:", desa, "url:", url ? url.substring(0, 60) : "null");
-        if (!url) continue;
-        // Jika sudah dataURL (dari PIC di session sama), langsung pakai
-        if (url.startsWith("data:")) {
-          desaPhotoDataUrls[desa] = url;
-        } else {
-          // Ambil dari Google Drive dan konversi ke dataURL
-          desaPhotoDataUrls[desa] = await urlToDataUrl(url);
-        }
+      let done = 0;
+      for (const [desa, url] of desaList) {
+        done++;
+        showToast(`⏳ Foto ${done}/${desaList.length}: ${desa}...`);
+        desaPhotoDataUrls[desa] = url.startsWith("data:")
+          ? url
+          : await urlToDataUrl(url);
       }
+      showToast("📄 Menyusun dokumen...");
       await generateDocx(jenis, tanggal, desaPhotoDataUrls);
       showToast("✅ Laporan berhasil diunduh!");
     } catch (e) {
-      showToast("Gagal generate: " + e.message);
-    }
+      console.error("[GIA]", e);
+      showToast(`❌ ${e.message}`);
+    } 
     setGenerating(false);
   };
 
