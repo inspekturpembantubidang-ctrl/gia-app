@@ -1287,10 +1287,19 @@ function ApipPortal({ onBack }) {
         if (data.success && data.status) {
           const k = storeKey(jenis, tanggal);
           if (!globalPhotoStore[k]) globalPhotoStore[k] = {};
+          // Konversi semua foto ke dataURL sekarang agar tampil tanpa CORS
           for (const [desaName, photos] of Object.entries(data.status)) {
             if (photos && photos.length > 0) {
-              // Simpan URL langsung (bukan dataURL) — konversi ke dataURL hanya saat generate
-              globalPhotoStore[k][desaName] = photos.map(p => p.url);
+              const dataUrls = await Promise.all(
+                photos.map(async (p) => {
+                  try {
+                    return await urlToDataUrl(p.url);
+                  } catch {
+                    return p.url; // fallback ke URL asli jika gagal
+                  }
+                })
+              );
+              globalPhotoStore[k][desaName] = dataUrls;
             }
           }
         }
@@ -1396,7 +1405,8 @@ function ApipPortal({ onBack }) {
         {jenis && tanggal && loadingPhotos && (
           <div className="form-card fade-up" style={{ textAlign: "center", padding: "20px", color: "var(--gray)" }}>
             <div style={{ width: 24, height: 24, border: "3px solid var(--mist)", borderTopColor: "var(--moss)", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 12px" }} />
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Memuat foto dari Google Drive...</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Memuat & memproses foto dari Google Drive...</div>
+            <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 4 }}>Mungkin perlu beberapa detik tergantung jumlah foto</div>
           </div>
         )}
 
