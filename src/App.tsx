@@ -575,7 +575,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: string) => void }) {
         </div>
         <a className="wa-link" href="https://wa.me/6281267426804" target="_blank" rel="noopener noreferrer">
           <span className="msymbol sm">phone</span>
-          Koordinator: Yopi Palintino, S.T. — 0812-6742-6804
+          APIP: Yopi Palintino, S.T. — 0812-6742-6804
         </a>
       </div>
     </div>
