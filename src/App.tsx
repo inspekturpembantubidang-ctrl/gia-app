@@ -923,7 +923,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
 
     try {
       const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { cache: "no-store" });
       const data = await resp.json();
 
       if (data.success && data.status) {
