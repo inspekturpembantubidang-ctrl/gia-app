@@ -35,8 +35,15 @@ const APIP_USERS = [
   { nama: "Yopi Palintino, S.T.", password: "nyamnyam1993" },
 ];
 
-// Global in-memory store
-const globalPhotoStore: Record<string, Record<string, string[]>> = {};
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+interface DrivePhoto {
+  fileId: string;
+  url: string;       // thumbnail/proxy URL dari Apps Script
+  filename: string;
+}
+
+// Global in-memory store — sekarang menyimpan DrivePhoto[], bukan string[]
+const globalPhotoStore: Record<string, Record<string, DrivePhoto[]>> = {};
 
 function storeKey(jenis: string, tanggal: string) {
   return `${jenis}__${tanggal}`;
@@ -66,6 +73,11 @@ function formatDate(iso: string) {
   const [y, m, d] = iso.split("-");
   const months = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
   return `${d} ${months[+m - 1]} ${y}`;
+}
+
+// Buat URL proxy foto via Apps Script (bypass CORS Google Drive)
+function proxyUrl(fileId: string) {
+  return `${APPS_SCRIPT_URL}?action=getPhoto&fileId=${fileId}`;
 }
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -326,10 +338,11 @@ const css = `
   .desa-body-inner { padding-top: 16px; }
   .no-photos { text-align: center; padding: 32px; color: var(--gray); font-size: 14px; }
 
-  .apip-photo-thumb { aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; position: relative; cursor: pointer; border: 3px solid transparent; transition: all 0.18s; }
+  .apip-photo-thumb { aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; position: relative; cursor: pointer; border: 3px solid transparent; transition: all 0.18s; background: var(--light); }
   .apip-photo-thumb:hover { border-color: var(--sage); transform: scale(1.02); }
   .apip-photo-thumb.chosen { border-color: var(--gold); }
   .apip-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .apip-photo-thumb .img-loading { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--gray); font-size: 12px; flex-direction: column; gap: 8px; }
   .chosen-badge { position: absolute; inset: 0; background: rgba(233,196,106,0.35); display: flex; align-items: center; justify-content: center; pointer-events: none; }
   .chosen-check { width: 36px; height: 36px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
   .apip-photo-thumb .zoom-hint { position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.55); color: white; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
@@ -375,6 +388,14 @@ const css = `
   .apip-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 8px; }
 
   .retry-info { font-size: 12px; color: var(--amber); margin-top: 8px; font-weight: 600; }
+
+  .fetch-status { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+  .fetch-status.loading { background: var(--foam); color: var(--moss); border: 1px solid var(--mist); }
+  .fetch-status.error { background: #fff5f5; color: var(--red); border: 1px solid #ffd5d5; }
+  .fetch-spin { width: 16px; height: 16px; border: 2px solid var(--mist); border-top-color: var(--sage); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+
+  .refresh-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--foam); border: 1px solid var(--mist); border-radius: 100px; padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--moss); cursor: pointer; transition: all 0.15s; margin-left: auto; }
+  .refresh-btn:hover { background: var(--mist); }
 `;
 
 // ─── TOAST HOOK ───────────────────────────────────────────────────────────────
@@ -425,8 +446,37 @@ function Lightbox({ src, caption, isChosen, onClose, onToggleChoose }: {
   );
 }
 
+// ─── LAZY IMAGE (untuk foto dari Drive via proxy) ─────────────────────────────
+function DriveImage({ fileId, alt, className }: { fileId: string; alt?: string; className?: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    setSrc(null); setErr(false);
+    // Gunakan thumbnail Google Drive langsung (tidak perlu CORS)
+    // Format: https://drive.google.com/thumbnail?id=FILE_ID&sz=w400
+    const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
+    setSrc(thumbUrl);
+  }, [fileId]);
+
+  if (err) return (
+    <div className="img-loading">
+      <span className="msymbol sm" style={{ color: "var(--border)" }}>broken_image</span>
+      <span style={{ fontSize: 11 }}>Gagal load</span>
+    </div>
+  );
+
+  if (!src) return (
+    <div className="img-loading">
+      <div style={{ width: 20, height: 20, border: "2px solid var(--mist)", borderTopColor: "var(--sage)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+    </div>
+  );
+
+  return <img src={src} alt={alt} className={className} onError={() => setErr(true)} />;
+}
+
 // ─── DOCX GENERATOR ───────────────────────────────────────────────────────────
-async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<string, string | null>) {
+async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<string, DrivePhoto | null>) {
   if (!(window as unknown as Record<string, unknown>).JSZip) {
     await new Promise<void>((res, rej) => {
       const s = document.createElement("script");
@@ -440,10 +490,6 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   const TBL_W = COL1 + COL2 + COL3 + COL4;
   const FOTO_W = 2418715; const FOTO_H = 1914525;
 
-  function dataUrlToBase64(dataUrl: string) { return dataUrl.split(",")[1]; }
-  function dataUrlMime(dataUrl: string) { const m = dataUrl.match(/data:([^;]+);/); return m ? m[1] : "image/jpeg"; }
-  function mimeToExt(mime: string) { return mime === "image/png" ? "png" : "jpeg"; }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const JSZip = (window as unknown as Record<string, any>).JSZip;
   const zip = new JSZip();
@@ -451,16 +497,30 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   let rIdCounter = 2;
   const imageParts: Record<string, string> = {};
 
+  // Fetch foto dari Google Drive thumbnail dan convert ke base64
   for (let i = 0; i < DESAS.length; i++) {
-    const photoUrl = desaPhotos[DESAS[i]];
-    if (photoUrl) {
-      const b64 = dataUrlToBase64(photoUrl);
-      const mime = dataUrlMime(photoUrl);
-      const ext = mimeToExt(mime);
-      const rId = `rId${rIdCounter++}`;
-      const partName = `media/img${i + 1}.${ext}`;
-      imgRels.push({ rId, partName, mime });
-      imageParts[partName] = b64;
+    const photo = desaPhotos[DESAS[i]];
+    if (photo) {
+      try {
+        // Ambil foto via thumbnail Google Drive
+        const thumbUrl = `https://drive.google.com/thumbnail?id=${photo.fileId}&sz=w800`;
+        const resp = await fetch(thumbUrl);
+        const blob = await resp.blob();
+        const mime = blob.type || "image/jpeg";
+        const ext = mime === "image/png" ? "png" : "jpeg";
+        const b64 = await new Promise<string>((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = () => res((reader.result as string).split(",")[1]);
+          reader.onerror = rej;
+          reader.readAsDataURL(blob);
+        });
+        const rId = `rId${rIdCounter++}`;
+        const partName = `media/img${i + 1}.${ext}`;
+        imgRels.push({ rId, partName, mime });
+        imageParts[partName] = b64;
+      } catch {
+        imgRels.push(null);
+      }
     } else {
       imgRels.push(null);
     }
@@ -532,7 +592,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
   zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
 
-  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", compression: "DEFLATE", compressionOptions: { level: 6 } });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.docx`;
@@ -590,7 +650,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
   const [photos, setPhotos] = useState<{ file: File; dataUrl: string }[]>([]);
   const [screen, setScreen] = useState("form");
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const [uploadStatus, setUploadStatus] = useState(""); // ← status teks saat upload
+  const [uploadStatus, setUploadStatus] = useState("");
   const [successPath, setSuccessPath] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -608,18 +668,12 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
   const removePhoto = (i: number) => setPhotos(p => p.filter((_, idx) => idx !== i));
 
-  // ─── FIXED: Upload dengan retry logic ────────────────────────────────────
   const handleSubmit = async () => {
     if (!desa || !jenis || !tanggal) { showToast("Lengkapi semua data terlebih dahulu"); return; }
     if (photos.length === 0) { showToast("Upload minimal 1 foto"); return; }
     setScreen("uploading");
     setUploadProgress({ current: 0, total: photos.length });
     setUploadStatus("Mempersiapkan...");
-
-    const key = storeKey(jenis, tanggal);
-    if (!globalPhotoStore[key]) globalPhotoStore[key] = {};
-    if (!globalPhotoStore[key][desa]) globalPhotoStore[key][desa] = [];
-    photos.forEach(p => globalPhotoStore[key][desa].push(p.dataUrl));
 
     try {
       for (let i = 0; i < photos.length; i++) {
@@ -634,14 +688,13 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
           base64: b64,
         };
 
-        // ✅ FIX: Retry hingga 3x jika koneksi gagal (penting untuk HP dengan sinyal lemah)
         let success = false;
         let lastError = "";
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             if (attempt > 1) {
               setUploadStatus(`Foto ${i + 1}: mencoba ulang (percobaan ${attempt}/3)...`);
-              await new Promise(r => setTimeout(r, 2000 * attempt)); // tunggu makin lama
+              await new Promise(r => setTimeout(r, 2000 * attempt));
             }
             await fetch(APPS_SCRIPT_URL, {
               method: "POST",
@@ -681,9 +734,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
             <div className="spinner" />
             <div style={{ fontSize: 18, fontWeight: 800, color: "var(--pine)", marginBottom: 8 }}>Mengirim Foto...</div>
             <div style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>{uploadProgress.current} dari {uploadProgress.total} foto</div>
-            {uploadStatus && (
-              <div className="retry-info">{uploadStatus}</div>
-            )}
+            {uploadStatus && <div className="retry-info">{uploadStatus}</div>}
             <div className="progress-wrap" style={{ marginTop: 12 }}>
               <div className="progress-fill" style={{ width: `${pct}%` }} />
             </div>
@@ -857,43 +908,67 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   const [expandedDesa, setExpandedDesa] = useState<string | null>(null);
-  const [selectedPhotos, setSelectedPhotos] = useState<Record<string, string | null>>({});
+  // selectedPhotos sekarang menyimpan DrivePhoto, bukan string
+  const [selectedPhotos, setSelectedPhotos] = useState<Record<string, DrivePhoto | null>>({});
+  const [fetchStatus, setFetchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [fetchError, setFetchError] = useState("");
+  const [driveData, setDriveData] = useState<Record<string, DrivePhoto[]>>({});
   const [generating, setGenerating] = useState(false);
-  const [lightbox, setLightbox] = useState<{ url: string; desa: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ photo: DrivePhoto; desa: string } | null>(null);
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
-  const key = storeKey(jenis, tanggal);
-  useEffect(() => {
-    if (!jenis || !tanggal) return;
-    fetch(`${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${tanggal}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && data.status) {
-          const k = storeKey(jenis, tanggal);
-          if (!globalPhotoStore[k]) globalPhotoStore[k] = {};
-          Object.entries(data.status).forEach(([d, p]: [string, unknown]) => {
-            globalPhotoStore[k][d] = (p as { url: string }[]).map((x) => x.url);
-          });
-          setSelectedPhotos({});
-        }
-      })
-      .catch(console.error);
-  }, [jenis, tanggal]);
-
-  const storeForKey = jenis && tanggal ? (globalPhotoStore[key] || {}) : {};
-  const desasWithPhotos = DESAS.filter(d => (storeForKey[d] || []).length > 0);
   const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
 
-  const selectPhoto = (desa: string, url: string) => {
-    setSelectedPhotos(p => ({ ...p, [desa]: p[desa] === url ? null : url }));
-  };
+  // ✅ FIXED: Fetch foto langsung dari Google Drive via Apps Script
+  const fetchPhotos = useCallback(async () => {
+    if (!jenis || !tanggal) return;
+    setFetchStatus("loading");
+    setFetchError("");
+    setDriveData({});
+    setSelectedPhotos({});
 
-  const openLightbox = (desa: string, url: string) => setLightbox({ url, desa });
+    try {
+      const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      if (data.success && data.status) {
+        // data.status = { "Desa X": [{fileId, filename}, ...], ... }
+        const newData: Record<string, DrivePhoto[]> = {};
+        Object.entries(data.status).forEach(([desa, files]) => {
+          newData[desa] = (files as { fileId: string; filename: string }[]).map(f => ({
+            fileId: f.fileId,
+            filename: f.filename,
+            url: `https://drive.google.com/thumbnail?id=${f.fileId}&sz=w600`,
+          }));
+        });
+        setDriveData(newData);
+        setFetchStatus("done");
+      } else {
+        setDriveData({});
+        setFetchStatus("done");
+      }
+    } catch (e) {
+      setFetchError("Gagal mengambil data dari server. Periksa koneksi internet.");
+      setFetchStatus("error");
+    }
+  }, [jenis, tanggal]);
+
+  useEffect(() => {
+    if (jenis && tanggal) fetchPhotos();
+  }, [jenis, tanggal, fetchPhotos]);
+
+  const desasWithPhotos = DESAS.filter(d => (driveData[d] || []).length > 0);
+
+  const selectPhoto = (desa: string, photo: DrivePhoto) => {
+    setSelectedPhotos(p => ({ ...p, [desa]: p[desa]?.fileId === photo.fileId ? null : photo }));
+  };
 
   const handleGenerate = async () => {
     if (!jenis || !tanggal) { showToast("Pilih jenis kegiatan dan tanggal terlebih dahulu"); return; }
     if (selectedCount === 0) { showToast("Pilih minimal 1 foto dari 1 desa"); return; }
     setGenerating(true);
+    showToast("Mengunduh foto & membuat laporan...");
     try {
       await generateDocx(jenis, tanggal, selectedPhotos);
       showToast("Laporan berhasil diunduh!");
@@ -954,10 +1029,11 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
     <div className="app-shell">
       {lightbox && (
         <Lightbox
-          src={lightbox.url} caption={lightbox.desa}
-          isChosen={selectedPhotos[lightbox.desa] === lightbox.url}
+          src={lightbox.photo.url}
+          caption={`${lightbox.desa} · ${lightbox.photo.filename}`}
+          isChosen={selectedPhotos[lightbox.desa]?.fileId === lightbox.photo.fileId}
           onClose={() => setLightbox(null)}
-          onToggleChoose={() => selectPhoto(lightbox.desa, lightbox.url)}
+          onToggleChoose={() => selectPhoto(lightbox.desa, lightbox.photo)}
         />
       )}
       <header className="topbar">
@@ -998,9 +1074,36 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
               <input type="date" className="field-input" value={tanggal} onChange={e => { setTanggal(e.target.value); setSelectedPhotos({}); }} />
             </div>
           </div>
+
+          {/* Status fetch */}
+          {fetchStatus === "loading" && (
+            <div className="fetch-status loading">
+              <div className="fetch-spin" />
+              Mengambil data foto dari Google Drive...
+            </div>
+          )}
+          {fetchStatus === "error" && (
+            <div className="fetch-status error">
+              <span className="msymbol sm">error</span>
+              {fetchError}
+              <button className="refresh-btn" onClick={fetchPhotos}>
+                <span className="msymbol sm">refresh</span> Coba lagi
+              </button>
+            </div>
+          )}
+          {fetchStatus === "done" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, color: "var(--moss)", fontWeight: 600 }}>
+                ✅ Data berhasil dimuat — {desasWithPhotos.length} desa ada foto
+              </span>
+              <button className="refresh-btn" onClick={fetchPhotos}>
+                <span className="msymbol sm">refresh</span> Refresh
+              </button>
+            </div>
+          )}
         </div>
 
-        {jenis && tanggal && (
+        {jenis && tanggal && fetchStatus === "done" && (
           <div className="apip-stats fade-up">
             <div className="stat-card"><div className="stat-value">{DESAS.length}</div><div className="stat-label">Total Desa</div></div>
             <div className="stat-card"><div className="stat-value" style={{ color: "var(--moss)" }}>{desasWithPhotos.length}</div><div className="stat-label">Ada Foto</div></div>
@@ -1020,13 +1123,13 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {jenis && tanggal ? (
+        {jenis && tanggal && fetchStatus === "done" ? (
           <div style={{ marginBottom: 100 }}>
             <div className="form-section-title" style={{ marginBottom: 14 }}>
               <span className="msymbol sm">location_on</span> Daftar Desa / Kelurahan
             </div>
             {DESAS.map((d, i) => {
-              const photos = storeForKey[d] || [];
+              const photos = driveData[d] || [];
               const hasPhotos = photos.length > 0;
               const chosen = selectedPhotos[d];
               const isOpen = expandedDesa === d;
@@ -1072,10 +1175,15 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                               Klik foto untuk <strong>memperbesar &amp; memilih</strong>. Foto bertanda bintang akan masuk ke laporan.
                             </p>
                             <div className="apip-photo-grid">
-                              {photos.map((url: string, pi: number) => (
-                                <div key={pi} className={`apip-photo-thumb${chosen === url ? " chosen" : ""}`} onClick={() => openLightbox(d, url)}>
-                                  <img src={url} alt={`foto-${pi + 1}`} />
-                                  {chosen === url && (
+                              {photos.map((photo, pi) => (
+                                <div
+                                  key={photo.fileId}
+                                  className={`apip-photo-thumb${chosen?.fileId === photo.fileId ? " chosen" : ""}`}
+                                  onClick={() => setLightbox({ photo, desa: d })}
+                                >
+                                  {/* ✅ Gunakan Google Drive thumbnail langsung */}
+                                  <DriveImage fileId={photo.fileId} alt={`foto-${pi + 1}`} />
+                                  {chosen?.fileId === photo.fileId && (
                                     <div className="chosen-badge">
                                       <div className="chosen-check">
                                         <span className="msymbol sm filled" style={{ color: "var(--forest)" }}>check</span>
@@ -1105,7 +1213,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
               );
             })}
           </div>
-        ) : (
+        ) : fetchStatus !== "loading" && (
           <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--gray)" }}>
             <span className="msymbol xl" style={{ color: "var(--border)", display: "block", marginBottom: 16 }}>filter_list</span>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--pine)", marginBottom: 8 }}>Pilih Filter Terlebih Dahulu</div>
@@ -1114,7 +1222,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      {jenis && tanggal && (
+      {jenis && tanggal && fetchStatus === "done" && (
         <div className="generate-panel">
           <div className="gen-inner">
             <div className="gen-progress-text">
