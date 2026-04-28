@@ -503,17 +503,11 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     if (photo) {
       try {
         // Ambil foto via thumbnail Google Drive
-        const thumbUrl = `https://drive.google.com/thumbnail?id=${photo.fileId}&sz=w800`;
-        const resp = await fetch(thumbUrl);
-        const blob = await resp.blob();
-        const mime = blob.type || "image/jpeg";
-        const ext = mime === "image/png" ? "png" : "jpeg";
-        const b64 = await new Promise<string>((res, rej) => {
-          const reader = new FileReader();
-          reader.onload = () => res((reader.result as string).split(",")[1]);
-          reader.onerror = rej;
-          reader.readAsDataURL(blob);
-        });
+       const proxyUrl = `${APPS_SCRIPT_URL}?action=getPhoto&fileId=${photo.fileId}`;
+const resp = await fetch(proxyUrl);
+const b64 = await resp.text();
+const mime = "image/jpeg";
+const ext = "jpeg";
         const rId = `rId${rIdCounter++}`;
         const partName = `media/img${i + 1}.${ext}`;
         imgRels.push({ rId, partName, mime });
