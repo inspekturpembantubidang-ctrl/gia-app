@@ -661,7 +661,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
     if (!files) return;
     const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024);
     const tooLarge = Array.from(files).filter(f => f.size > 5 * 1024 * 1024);
-    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 5MB)`);
+    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 10mb)`);
     const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
     setPhotos(p => [...p, ...newPhotos].slice(0, 10));
   }, [showToast]);
@@ -870,7 +870,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
               <span className="msymbol lg" style={{ color: "var(--sage)" }}>add_a_photo</span>
             </div>
             <div className="dropzone-title">Tarik foto ke sini atau klik untuk memilih</div>
-            <div className="dropzone-sub">Maks 10 foto · JPG, PNG · Maks 5MB per file</div>
+            <div className="dropzone-sub">Maks 10 foto · JPG, PNG · Maks 10mb per file</div>
           </div>
           {photos.length > 0 && (
             <div className="photo-grid">
