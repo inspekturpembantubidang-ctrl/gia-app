@@ -3,15 +3,17 @@ import { useState, useRef, useCallback, useEffect } from "react";
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxTsARSVGvJJhvdU1ffrybLLpOz_lp9Bcjtgc1oDk5eXKorANYs9sMj0BViOofYBXRnYg/exec";
 
-const DESAS = [
-  "Desa Pesisir Timur",
-  "Desa Sri Tanjung",
-  "Desa Tarempa Barat",
-  "Desa Tarempa Barat Daya",
-  "Desa Tarempa Selatan",
-  "Desa Tarempa Timur",
-  "Kelurahan Tarempa",
+export const DESAS_DATA = [
+  { nama: "Desa Pesisir Timur",      hp: "6282268484231" },
+  { nama: "Desa Sri Tanjung",         hp: "6282213508920" },
+  { nama: "Desa Tarempa Barat",       hp: "6282387787403" },
+  { nama: "Desa Tarempa Barat Daya",  hp: "6282364825147" },
+  { nama: "Desa Tarempa Selatan",     hp: "6281356168793" },
+  { nama: "Desa Tarempa Timur",       hp: "6288272195261" },
+  { nama: "Kelurahan Tarempa",        hp: "6281270420122" },
 ];
+// Backward-compat: array nama saja (dipakai di banyak tempat)
+const DESAS = DESAS_DATA.map(d => d.nama);
 
 const JENIS_KEGIATAN = ["Jum'at Bersih", "Selasa Goro"];
 
@@ -1238,13 +1240,10 @@ function safeName(s) {
 
 // Konversi URL foto Google Drive → dataURL (base64) via proxy fetch
 async function urlToDataUrl(url) {
-  if (!url) throw new Error("URL kosong / undefined");
   const driveId =
-    url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)?.[1] ||
     url.match(/\/d\/([a-zA-Z0-9_-]{10,})/)?.[1] ||
     url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/)?.[1] ||
-    url.match(/open\?id=([a-zA-Z0-9_-]{10,})/)?.[1] ||
-    url.match(/\/uc\?.*id=([a-zA-Z0-9_-]{10,})/)?.[1];
+    url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)?.[1];
   if (!driveId) throw new Error("Tidak bisa ekstrak Drive ID dari: " + url);
 
   // Fetch base64 via Apps Script agar bypass CORS
@@ -1296,20 +1295,12 @@ function ApipPortal({ onBack }) {
               const dataUrls = await Promise.all(
                 photos.map(async (p) => {
                   try {
-                    // Gunakan fileId langsung (lebih reliable daripada p.url)
-                    const driveUrl = p.url || `https://drive.google.com/file/d/${p.fileId}/view`;
-                    return await urlToDataUrl(driveUrl);
+                    return await urlToDataUrl(p.url);
                   } catch {
-                    // Fallback: coba langsung via fileId ke Apps Script
-                    if (p.fileId) {
-                      try {
-                        return await urlToDataUrl(`https://drive.google.com/file/d/${p.fileId}/view`);
-                      } catch { return null; }
-                    }
-                    return null;
+                    return p.url; // fallback ke URL asli jika gagal
                   }
                 })
-              ).then(urls => urls.filter(Boolean));
+              );
               globalPhotoStore[k][desaName] = dataUrls;
             }
           }
