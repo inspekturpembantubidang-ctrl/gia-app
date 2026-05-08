@@ -25,10 +25,10 @@ const PIC_DATA: Record<string, { nama: string; hp: string }> = {
   "Desa Pesisir Timur":      { nama: "AGUS SALIM, SE",            hp: "082268484231"  },
   "Desa Sri Tanjung":        { nama: "Kevin",                      hp: "082213508920"  },
   "Desa Tarempa Barat":      { nama: "PURNAMA, S.I.P",            hp: "082387787403"  },
-  "Desa Tarempa Barat Daya": { nama: "REBO YANTO",                hp: "82364825147"   },
-  "Desa Tarempa Selatan":    { nama: "Marina",                     hp: "813556168793"  },
-  "Desa Tarempa Timur":      { nama: "Desi Mainila Sari",          hp: "88272195261"   },
-  "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "0812070420122" },
+  "Desa Tarempa Barat Daya": { nama: "REBO YANTO",                hp: "082364825147"  },
+  "Desa Tarempa Selatan":    { nama: "Marina",                     hp: "081356168793"  },
+  "Desa Tarempa Timur":      { nama: "Desi Mainila Sari",          hp: "088272195261"  },
+  "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "081270420122"  },
 };
 
 const APIP_USERS = [
