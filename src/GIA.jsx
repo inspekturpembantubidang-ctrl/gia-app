@@ -1238,10 +1238,13 @@ function safeName(s) {
 
 // Konversi URL foto Google Drive → dataURL (base64) via proxy fetch
 async function urlToDataUrl(url) {
+  if (!url) throw new Error("URL kosong / undefined");
   const driveId =
+    url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)?.[1] ||
     url.match(/\/d\/([a-zA-Z0-9_-]{10,})/)?.[1] ||
     url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/)?.[1] ||
-    url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)?.[1];
+    url.match(/open\?id=([a-zA-Z0-9_-]{10,})/)?.[1] ||
+    url.match(/\/uc\?.*id=([a-zA-Z0-9_-]{10,})/)?.[1];
   if (!driveId) throw new Error("Tidak bisa ekstrak Drive ID dari: " + url);
 
   // Fetch base64 via Apps Script agar bypass CORS
@@ -1293,12 +1296,20 @@ function ApipPortal({ onBack }) {
               const dataUrls = await Promise.all(
                 photos.map(async (p) => {
                   try {
-                    return await urlToDataUrl(p.url);
+                    // Gunakan fileId langsung (lebih reliable daripada p.url)
+                    const driveUrl = p.url || `https://drive.google.com/file/d/${p.fileId}/view`;
+                    return await urlToDataUrl(driveUrl);
                   } catch {
-                    return p.url; // fallback ke URL asli jika gagal
+                    // Fallback: coba langsung via fileId ke Apps Script
+                    if (p.fileId) {
+                      try {
+                        return await urlToDataUrl(`https://drive.google.com/file/d/${p.fileId}/view`);
+                      } catch { return null; }
+                    }
+                    return null;
                   }
                 })
-              );
+              ).then(urls => urls.filter(Boolean));
               globalPhotoStore[k][desaName] = dataUrls;
             }
           }
