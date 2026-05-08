@@ -653,11 +653,9 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
-    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024);
-    const tooLarge = Array.from(files).filter(f => f.size > 5 * 1024 * 1024);
-    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 10mb)`);
+    const valid = Array.from(files).filter(f => f.type.startsWith("image/"));
     const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
-    setPhotos(p => [...p, ...newPhotos].slice(0, 10));
+    setPhotos(p => [...p, ...newPhotos]);
   }, [showToast]);
 
   const removePhoto = (i: number) => setPhotos(p => p.filter((_, idx) => idx !== i));
