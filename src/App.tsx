@@ -1167,8 +1167,13 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
         {/* Konfirmasi card sebelum kirim */}
         {showConfirm ? (
-          <div className="form-card fade-up" style={{ border: "2px solid var(--jade)", background: "var(--foam)" }}>
+          <div className="form-card fade-up" style={{ border: `2px solid ${uploadHistory.some(h => `${h.desa}|${h.jenis}|${h.tanggal}` === `${desa}|${jenis}|${tanggal}`) ? "var(--amber)" : "var(--jade)"}`, background: "var(--foam)" }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: "var(--pine)", marginBottom: 8 }}>⚠️ Konfirmasi Pengiriman</div>
+            {uploadHistory.some(h => `${h.desa}|${h.jenis}|${h.tanggal}` === `${desa}|${jenis}|${tanggal}`) && (
+              <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid var(--amber)", borderRadius: 10, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+                ⚠️ Anda sudah pernah upload untuk kegiatan ini. Foto baru akan ditambahkan ke folder yang sama.
+              </div>
+            )}
             <div style={{ fontSize: 13, color: "var(--gray)", marginBottom: 16, lineHeight: 1.7 }}>
               Anda akan mengirim <strong>{photos.length} foto</strong> untuk kegiatan <strong>{jenis}</strong> pada <strong>{formatDate(tanggal)}</strong> dari <strong>{desa}</strong>.<br/>
               Pastikan data sudah benar. Lanjutkan?
