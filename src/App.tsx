@@ -882,6 +882,23 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
         setUploadProgress({ current: i + 1, total: photos.length });
       }
 
+      // Validasi: cek apakah foto benar-benar masuk ke Drive
+      setUploadStatus("Memverifikasi foto di server...");
+      let verifiedCount = 0;
+      try {
+        const verifyUrl = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
+        const verifyResp = await fetch(verifyUrl, { cache: "no-store" });
+        const verifyData = await verifyResp.json();
+        if (verifyData.success && verifyData.status?.[desa]) {
+          verifiedCount = verifyData.status[desa].length;
+        }
+      } catch {}
+
+      // Jika tidak ada foto terverifikasi sama sekali, anggap gagal
+      if (verifiedCount === 0) {
+        throw new Error("Foto terkirim namun tidak terdeteksi di server. Kemungkinan koneksi terputus. Coba kirim ulang.");
+      }
+
       setSuccessPath(`Desa Kecamatan Siantan / ${desa} / ${jenis} / ${tanggal}`);
       setScreen("success");
       // Simpan riwayat upload ke localStorage
