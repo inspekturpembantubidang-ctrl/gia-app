@@ -31,9 +31,17 @@ const PIC_DATA: Record<string, { nama: string; hp: string }> = {
   "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "081270420122"  },
 };
 
-const APIP_USERS = [
-  { nama: "Yopi Palintino, S.T.", password: "nyamnyam1993" },
-];
+// Password disimpan sebagai SHA-256 hash — tidak ada plaintext di source code
+// Untuk update password: jalankan di browser console:
+//   crypto.subtle.digest("SHA-256", new TextEncoder().encode("passwordbaru"))
+//     .then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("")))
+// SHA-256("nyamnyam1993"):
+const APIP_PASSWORD_HASH = "3ff96624c57208d58d731c35e32c238e88030a08738df4c33dfb87674c5842b9";
+
+async function hashPassword(pw: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface DrivePhoto {
@@ -806,6 +814,11 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
   const [successPath, setSuccessPath] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const uploadHistory: Array<{desa:string;jenis:string;tanggal:string;jumlahFoto:number;waktu:string}> = (() => {
+    try { return JSON.parse(localStorage.getItem("gia_upload_history") || "[]"); } catch { return []; }
+  })();
   const [lightbox, setLightbox] = useState<{ url: string; idx: number } | null>(null);
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
@@ -867,6 +880,26 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
       setSuccessPath(`Desa Kecamatan Siantan / ${desa} / ${jenis} / ${tanggal}`);
       setScreen("success");
+      // Simpan riwayat upload ke localStorage
+      try {
+        const key = "gia_upload_history";
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        existing.unshift({ desa, jenis, tanggal, jumlahFoto: photos.length, waktu: new Date().toISOString() });
+        localStorage.setItem(key, JSON.stringify(existing.slice(0, 20))); // simpan max 20 entri
+      } catch {}
+      // Auto-buka WA ke APIP setelah upload sukses
+      const _waText = encodeURIComponent(
+        `Assalamu'alaikum Pak Yopi 🌿\n\n` +
+        `Kami dari *${desa}* telah selesai mengupload foto dokumentasi kegiatan.\n\n` +
+        `📋 *Detail Kegiatan:*\n` +
+        `• Kegiatan : ${jenis}\n` +
+        `• Tanggal  : ${tanggal}\n` +
+        `• Jumlah Foto : ${photos.length} foto\n\n` +
+        `Mohon ditinjau di Portal APIP.\n` +
+        `🔗 https://gia-app.netlify.app\n\n` +
+        `Terima kasih 🙏`
+      );
+      setTimeout(() => window.open(`https://wa.me/6281267426804?text=${_waText}`, "_blank"), 800);
     } catch (e) {
       setErrorMsg((e as Error).message || "Gagal mengirim foto. Coba lagi.");
       setScreen("error");
@@ -1085,13 +1118,68 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
           )}
         </div>
 
-        <button className="btn-primary" onClick={handleSubmit}>
-          <span className="msymbol sm filled">send</span>
-          Kirim Laporan Foto
-        </button>
-        <p style={{ textAlign: "center", fontSize: 12, color: "var(--gray)", marginTop: 10 }}>
-          Pastikan data yang Anda masukkan sudah benar sebelum mengirim.
-        </p>
+        {/* Riwayat Upload */}
+        {uploadHistory.length > 0 && (
+          <div className="form-card" style={{ marginBottom: 16 }}>
+            <div className="form-section-title" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => setShowHistory(h => !h)}>
+              <span className="msymbol sm">history</span> Riwayat Upload Terakhir
+              <span className="msymbol" style={{ marginLeft: "auto", transform: showHistory ? "rotate(180deg)" : "none", transition: "0.2s" }}>expand_more</span>
+            </div>
+            {showHistory && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {uploadHistory.slice(0, 5).map((h, i) => (
+                  <div key={i} style={{ fontSize: 12, background: "var(--light)", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 10, alignItems: "center" }}>
+                    <span className="msymbol sm" style={{ color: "var(--jade)", flexShrink: 0 }}>check_circle</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: "var(--pine)" }}>{h.desa}</div>
+                      <div style={{ color: "var(--gray)", marginTop: 2 }}>{h.jenis} · {h.tanggal} · {h.jumlahFoto} foto</div>
+                    </div>
+                    <div style={{ color: "var(--gray)", fontSize: 11, flexShrink: 0 }}>
+                      {new Date(h.waktu).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Konfirmasi card sebelum kirim */}
+        {showConfirm ? (
+          <div className="form-card fade-up" style={{ border: "2px solid var(--jade)", background: "var(--foam)" }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--pine)", marginBottom: 8 }}>⚠️ Konfirmasi Pengiriman</div>
+            <div style={{ fontSize: 13, color: "var(--gray)", marginBottom: 16, lineHeight: 1.7 }}>
+              Anda akan mengirim <strong>{photos.length} foto</strong> untuk kegiatan <strong>{jenis}</strong> pada <strong>{formatDate(tanggal)}</strong> dari <strong>{desa}</strong>.<br/>
+              Pastikan data sudah benar. Lanjutkan?
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn-primary btn-outline" style={{ flex: 1 }} onClick={() => setShowConfirm(false)}>Batal</button>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={() => { setShowConfirm(false); handleSubmit(); }}>
+                <span className="msymbol sm filled">send</span> Ya, Kirim
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button className="btn-primary" onClick={() => {
+              if (!desa || !jenis || !tanggal) { showToast("Lengkapi semua data terlebih dahulu"); return; }
+              if (photos.length === 0) { showToast("Upload minimal 1 foto"); return; }
+              // Cek duplikat
+              const dupKey = `${desa}|${jenis}|${tanggal}`;
+              const isDup = uploadHistory.some(h => `${h.desa}|${h.jenis}|${h.tanggal}` === dupKey);
+              if (isDup) {
+                if (!window.confirm(`⚠️ Anda sudah pernah upload foto untuk ${desa} pada ${jenis} tanggal ${tanggal}. Lanjutkan upload lagi?`)) return;
+              }
+              setShowConfirm(true);
+            }}>
+              <span className="msymbol sm filled">send</span>
+              Kirim Laporan Foto
+            </button>
+            <p style={{ textAlign: "center", fontSize: 12, color: "var(--gray)", marginTop: 10 }}>
+              Pastikan data yang Anda masukkan sudah benar sebelum mengirim.
+            </p>
+          </>
+        )}
       </div>
 
       <div className={`toast${toastVisible ? " show" : ""}`}>{toastMsg}</div>
@@ -1101,9 +1189,10 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
 // ─── APIP PORTAL ─────────────────────────────────────────────────────────────
 function ApipPortal({ onBack }: { onBack: () => void }) {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem("gia_apip_auth") === "1");
   const [loginError, setLoginError] = useState("");
   const [loginInput, setLoginInput] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   const [expandedDesa, setExpandedDesa] = useState<string | null>(null);
@@ -1203,20 +1292,26 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                 type="password" className="field-input" placeholder="••••••••••••"
                 value={loginInput}
                 onChange={e => { setLoginInput(e.target.value); setLoginError(""); }}
-                onKeyDown={e => {
+                onKeyDown={async e => {
                   if (e.key === "Enter") {
-                    const user = APIP_USERS.find(u => u.password === loginInput);
-                    if (user) setAuthed(true); else setLoginError("Password salah. Silakan coba lagi.");
+                    setLoginLoading(true);
+                    const h = await hashPassword(loginInput);
+                    setLoginLoading(false);
+                    if (h === APIP_PASSWORD_HASH) { sessionStorage.setItem("gia_apip_auth","1"); setAuthed(true); }
+                    else setLoginError("Password salah. Silakan coba lagi.");
                   }
                 }}
               />
               {loginError && <div style={{ fontSize: 12, color: "var(--red)", marginTop: 6, fontWeight: 600 }}>⚠️ {loginError}</div>}
             </div>
-            <button className="btn-primary btn-gold" onClick={() => {
-              const user = APIP_USERS.find(u => u.password === loginInput);
-              if (user) setAuthed(true); else setLoginError("Password salah. Silakan coba lagi.");
+            <button className="btn-primary btn-gold" disabled={loginLoading} onClick={async () => {
+              setLoginLoading(true);
+              const h = await hashPassword(loginInput);
+              setLoginLoading(false);
+              if (h === APIP_PASSWORD_HASH) { sessionStorage.setItem("gia_apip_auth","1"); setAuthed(true); }
+              else setLoginError("Password salah. Silakan coba lagi.");
             }}>
-              <span className="msymbol sm">login</span> Masuk Portal APIP
+              {loginLoading ? <><div style={{width:16,height:16,border:"2px solid var(--forest)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/> Memverifikasi...</> : <><span className="msymbol sm">login</span> Masuk Portal APIP</>}
             </button>
           </div>
         </div>
@@ -1243,7 +1338,12 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
           <div className="topbar-brand-dot" style={{ background: "var(--gold)" }} />
           Gerakan Indonesia Asri
         </div>
-        <div className="role-pill" style={{ color: "#b58a00", borderColor: "var(--gold)", background: "rgba(233,196,106,0.12)" }}>APIP</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div className="role-pill" style={{ color: "#b58a00", borderColor: "var(--gold)", background: "rgba(233,196,106,0.12)" }}>APIP</div>
+          <button onClick={() => { sessionStorage.removeItem("gia_apip_auth"); setAuthed(false); }} style={{background:"none",border:"1px solid var(--border)",borderRadius:10,padding:"5px 10px",fontSize:12,color:"var(--gray)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+            <span className="msymbol sm">logout</span>
+          </button>
+        </div>
       </header>
 
       <div className="content-area fade-up">
@@ -1303,11 +1403,19 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
         </div>
 
         {jenis && tanggal && fetchStatus === "done" && (
-          <div className="apip-stats fade-up">
-            <div className="stat-card"><div className="stat-value">{DESAS.length}</div><div className="stat-label">Total Desa</div></div>
-            <div className="stat-card"><div className="stat-value" style={{ color: "var(--moss)" }}>{desasWithPhotos.length}</div><div className="stat-label">Ada Foto</div></div>
-            <div className="stat-card"><div className="stat-value" style={{ color: "#b58a00" }}>{selectedCount}</div><div className="stat-label">Terpilih</div></div>
-          </div>
+          <>
+            <div className="apip-stats fade-up">
+              <div className="stat-card"><div className="stat-value">{DESAS.length}</div><div className="stat-label">Total Desa</div></div>
+              <div className="stat-card"><div className="stat-value" style={{ color: "var(--jade)" }}>{desasWithPhotos.length}</div><div className="stat-label">Ada Foto</div></div>
+              <div className="stat-card"><div className="stat-value" style={{ color: "var(--red)" }}>{DESAS.length - desasWithPhotos.length}</div><div className="stat-label">Belum Upload</div></div>
+            </div>
+            {DESAS.length - desasWithPhotos.length > 0 && (
+              <div className="fetch-status fade-up" style={{ background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa", marginBottom: 16 }}>
+                <span className="msymbol sm">warning</span>
+                <span>Desa belum upload: <strong>{DESAS.filter(d => !driveData[d]?.length).join(", ")}</strong></span>
+              </div>
+            )}
+          </>
         )}
 
         {jenis && tanggal && selectedCount > 0 && (
@@ -1447,12 +1555,45 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [role, setRole] = useState<string | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstall, setShowInstall] = useState(false);
+
+  useEffect(() => {
+    // PWA install prompt
+    const handler = (e: any) => { e.preventDefault(); setDeferredPrompt(e); setShowInstall(true); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") setShowInstall(false);
+    setDeferredPrompt(null);
+  };
+
   return (
     <>
       <style>{css}</style>
       {role === null && <RoleSelector onSelect={setRole} />}
       {role === "pic" && <DesaPortal onBack={() => setRole(null)} />}
       {role === "apip" && <ApipPortal onBack={() => setRole(null)} />}
+      {showInstall && role === null && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "var(--white)", border: "1px solid var(--border)", borderRadius: 18,
+          padding: "14px 20px", display: "flex", alignItems: "center", gap: 14,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 999, maxWidth: 360, width: "calc(100% - 48px)"
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--pine)" }}>Install Aplikasi GIA</div>
+            <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 2 }}>Akses lebih cepat dari layar utama HP</div>
+          </div>
+          <button onClick={() => setShowInstall(false)} style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", padding: 4, fontFamily: "'Material Symbols Outlined'", fontSize: 20, fontVariationSettings: "'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24" }}>close</button>
+          <button onClick={handleInstall} style={{ background: "var(--pine)", color: "white", border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Outfit',sans-serif", flexShrink: 0 }}>Install</button>
+        </div>
+      )}
     </>
   );
 }
