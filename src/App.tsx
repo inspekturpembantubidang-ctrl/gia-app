@@ -896,17 +896,66 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
   }
 
   if (screen === "success") {
+    const waText = encodeURIComponent(
+      `Assalamu'alaikum Pak Yopi 🌿
+
+` +
+      `Kami dari *${desa}* telah selesai mengupload foto dokumentasi kegiatan.
+
+` +
+      `📋 *Detail Kegiatan:*
+` +
+      `• Kegiatan : ${jenis}
+` +
+      `• Tanggal  : ${formatDate(tanggal)}
+` +
+      `• Jumlah Foto : ${uploadProgress.total} foto
+
+` +
+      `Mohon ditinjau di Portal APIP.
+` +
+      `🔗 https://gia-app.netlify.app
+
+` +
+      `Terima kasih 🙏`
+    );
+    const waUrl = `https://wa.me/6281267426804?text=${waText}`;
+
     return (
       <div className="app-shell">
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div className="status-card scale-in" style={{ maxWidth: 420, width: "100%" }}>
-            <div className="status-icon" style={{ background: "var(--foam)", border: "2px solid var(--mist)" }}>
-              <span className="msymbol xl filled" style={{ color: "var(--sage)" }}>check_circle</span>
+            <div className="status-icon" style={{ background: "var(--foam)", border: "2px solid var(--mist)", borderRadius: 24 }}>
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <defs>
+                  <linearGradient id="ckG" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#86efac"/>
+                    <stop offset="100%" stopColor="#22c55e"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="20" cy="20" r="18" fill="url(#ckG)" opacity="0.15"/>
+                <path d="M12 20.5l5.5 5.5 10.5-11" stroke="url(#ckG)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </div>
             <div className="status-title">Foto Berhasil Terkirim!</div>
-            <div className="status-sub">{uploadProgress.total} foto dari <strong>{desa}</strong> berhasil tersimpan.</div>
+            <div className="status-sub">{uploadProgress.total} foto dari <strong>{desa}</strong> telah tersimpan di Google Drive.</div>
             <div className="path-pill">📁 {successPath}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: "none" }}
+              >
+                <button className="btn-primary btn-gold" style={{ width: "100%" }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+                    <path d="M9 1.5C4.86 1.5 1.5 4.86 1.5 9c0 1.32.36 2.56.98 3.63L1.5 16.5l3.97-.96A7.46 7.46 0 009 16.5c4.14 0 7.5-3.36 7.5-7.5S13.14 1.5 9 1.5z" fill="currentColor" opacity="0.2"/>
+                    <path d="M9 1.5C4.86 1.5 1.5 4.86 1.5 9c0 1.32.36 2.56.98 3.63L1.5 16.5l3.97-.96A7.46 7.46 0 009 16.5c4.14 0 7.5-3.36 7.5-7.5S13.14 1.5 9 1.5z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+                    <path d="M6.5 7c0-.28.22-.5.5-.5h.5c.28 0 .5.22.5.5l.5 1.5c0 .18-.1.35-.25.44l-.5.28c.36.72.97 1.33 1.7 1.7l.28-.5c.09-.15.26-.25.44-.25l1.5.5c.28 0 .5.22.5.5v.5c0 .28-.22.5-.5.5C8.57 12.17 5.83 9.43 6 7.5L6.5 7z" fill="currentColor"/>
+                  </svg>
+                  Kirim Notifikasi ke APIP via WhatsApp
+                </button>
+              </a>
               <button className="btn-primary" onClick={reset}>
                 <span className="msymbol sm">add_a_photo</span> Upload Foto Lagi
               </button>
