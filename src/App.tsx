@@ -50,6 +50,54 @@ function storeKey(jenis: string, tanggal: string) {
 }
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
+
+// Kompres + resize gambar sebelum upload (max 1920px, JPEG 82%)
+function compressImage(file: File, maxPx = 1920, quality = 0.82): Promise<{ dataUrl: string; base64: string; mime: string }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else { width = Math.round(width * maxPx / height); height = maxPx; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      resolve({ dataUrl, base64: dataUrl.split(",")[1], mime: "image/jpeg" });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Thumbnail kecil (800px) untuk preview UI agar cepat
+function makeThumbnail(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const max = 800;
+      let { width, height } = img;
+      if (width > max || height > max) {
+        if (width >= height) { height = Math.round(height * max / width); width = max; }
+        else { width = Math.round(width * max / height); height = max; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -651,10 +699,11 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
   const [lightbox, setLightbox] = useState<{ url: string; idx: number } | null>(null);
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
+  // Pakai thumbnail kecil untuk preview agar UI tidak berat
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
     const valid = Array.from(files).filter(f => f.type.startsWith("image/"));
-    const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
+    const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await makeThumbnail(f) })));
     setPhotos(p => [...p, ...newPhotos]);
   }, [showToast]);
 
@@ -665,47 +714,46 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
     if (photos.length === 0) { showToast("Upload minimal 1 foto"); return; }
     setScreen("uploading");
     setUploadProgress({ current: 0, total: photos.length });
-    setUploadStatus("Mempersiapkan...");
+    setUploadStatus("Mengompres foto...");
 
     try {
-      for (let i = 0; i < photos.length; i++) {
-        const p = photos[i];
-        setUploadStatus(`Mengirim foto ${i + 1} dari ${photos.length}...`);
+      // 1. Kompres semua foto paralel dulu
+      const compressed = await Promise.all(
+        photos.map(p => compressImage(p.file))
+      );
 
-        const b64 = await fileToBase64(p.file);
-        const payload = {
-          desa, jenis, tanggal,
-          filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.${p.file.name.split(".").pop()}`,
-          mimeType: p.file.type,
-          base64: b64,
-        };
+      setUploadStatus(`Mengirim ${photos.length} foto...`);
 
-        let success = false;
-        let lastError = "";
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            if (attempt > 1) {
-              setUploadStatus(`Foto ${i + 1}: mencoba ulang (percobaan ${attempt}/3)...`);
-              await new Promise(r => setTimeout(r, 2000 * attempt));
+      // 2. Upload paralel (semua sekaligus)
+      let done = 0;
+      await Promise.all(
+        compressed.map(async (c, i) => {
+          const payload = {
+            desa, jenis, tanggal,
+            filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.jpg`,
+            mimeType: c.mime,
+            base64: c.base64,
+          };
+
+          let lastError = "";
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (attempt > 1) await new Promise(r => setTimeout(r, 2000 * attempt));
+              await fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify(payload),
+              });
+              done++;
+              setUploadProgress({ current: done, total: photos.length });
+              return;
+            } catch (e) {
+              lastError = (e as Error).message;
             }
-            await fetch(APPS_SCRIPT_URL, {
-              method: "POST",
-              mode: "no-cors",
-              body: JSON.stringify(payload),
-            });
-            success = true;
-            break;
-          } catch (e) {
-            lastError = (e as Error).message;
           }
-        }
-
-        if (!success) {
           throw new Error(`Foto ${i + 1} gagal setelah 3 percobaan: ${lastError}`);
-        }
-
-        setUploadProgress({ current: i + 1, total: photos.length });
-      }
+        })
+      );
 
       setSuccessPath(`Desa Kecamatan Siantan / ${desa} / ${jenis} / ${tanggal}`);
       setScreen("success");
