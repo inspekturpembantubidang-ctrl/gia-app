@@ -848,38 +848,39 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
         photos.map(p => compressImage(p.file))
       );
 
-      setUploadStatus(`Mengirim ${photos.length} foto...`);
+      // 2. Upload SERIAL satu per satu (hindari duplikat folder di Drive)
+      for (let i = 0; i < compressed.length; i++) {
+        const c = compressed[i];
+        setUploadStatus(`Mengirim foto ${i + 1} dari ${compressed.length}...`);
+        const payload = {
+          desa, jenis, tanggal,
+          filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.jpg`,
+          mimeType: c.mime,
+          base64: c.base64,
+        };
 
-      // 2. Upload paralel (semua sekaligus)
-      let done = 0;
-      await Promise.all(
-        compressed.map(async (c, i) => {
-          const payload = {
-            desa, jenis, tanggal,
-            filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.jpg`,
-            mimeType: c.mime,
-            base64: c.base64,
-          };
-
-          let lastError = "";
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-              if (attempt > 1) await new Promise(r => setTimeout(r, 2000 * attempt));
-              await fetch(APPS_SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                body: JSON.stringify(payload),
-              });
-              done++;
-              setUploadProgress({ current: done, total: photos.length });
-              return;
-            } catch (e) {
-              lastError = (e as Error).message;
+        let lastError = "";
+        let success = false;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            if (attempt > 1) {
+              setUploadStatus(`Foto ${i + 1}: mencoba ulang (${attempt}/3)...`);
+              await new Promise(r => setTimeout(r, 2000 * attempt));
             }
+            await fetch(APPS_SCRIPT_URL, {
+              method: "POST",
+              mode: "no-cors",
+              body: JSON.stringify(payload),
+            });
+            success = true;
+            break;
+          } catch (e) {
+            lastError = (e as Error).message;
           }
-          throw new Error(`Foto ${i + 1} gagal setelah 3 percobaan: ${lastError}`);
-        })
-      );
+        }
+        if (!success) throw new Error(`Foto ${i + 1} gagal setelah 3 percobaan: ${lastError}`);
+        setUploadProgress({ current: i + 1, total: photos.length });
+      }
 
       setSuccessPath(`Desa Kecamatan Siantan / ${desa} / ${jenis} / ${tanggal}`);
       setScreen("success");
