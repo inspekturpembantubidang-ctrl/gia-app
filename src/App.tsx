@@ -256,9 +256,9 @@ const css = `
     font-size: 15px;
     font-weight: 400;
     text-align: center;
-    max-width: 420px;
+    max-width: 360px;
     line-height: 1.8;
-    margin-bottom: 52px;
+    margin: 0 auto 52px;
   }
   .role-cards {
     display: grid;
@@ -277,9 +277,11 @@ const css = `
     transition: all 0.3s cubic-bezier(0.23,1,0.32,1);
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 18px;
     position: relative;
     overflow: hidden;
+    text-align: center;
   }
   .role-card::before {
     content: '';
@@ -301,6 +303,7 @@ const css = `
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     position: relative;
+    margin: 0 auto;
   }
   /* 3D-ish icon glow effect */
   .role-icon::after {
@@ -310,9 +313,9 @@ const css = `
     border-radius: inherit;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1);
   }
-  .role-card-title { color: #fff; font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
-  .role-card-desc { color: rgba(255,255,255,0.4); font-size: 13px; line-height: 1.65; font-weight: 400; flex: 1; }
-  .role-arrow { display: inline-flex; align-items: center; gap: 6px; color: var(--sage); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+  .role-card-title { color: #fff; font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; text-align: center; }
+  .role-card-desc { color: rgba(255,255,255,0.4); font-size: 13px; line-height: 1.65; font-weight: 400; flex: 1; text-align: center; }
+  .role-arrow { display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--sage); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; width: 100%; }
   .wa-link { margin-top: 40px; display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.25); font-size: 13px; font-weight: 500; text-decoration: none; transition: color 0.2s; }
   .wa-link:hover { color: rgba(255,255,255,0.5); }
 
