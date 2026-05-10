@@ -1140,7 +1140,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
         </div>
 
         {/* Riwayat Upload */}
-        {uploadHistory.length > 0 && (
+        {uploadHistory.filter(h => h.desa === desa).length > 0 && desa && (
           <div className="form-card" style={{ marginBottom: 16 }}>
             <div className="form-section-title" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => setShowHistory(h => !h)}>
               <span className="msymbol sm">history</span> Riwayat Upload Terakhir
