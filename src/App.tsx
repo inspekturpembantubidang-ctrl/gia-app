@@ -1185,12 +1185,6 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
             <button className="btn-primary" onClick={() => {
               if (!desa || !jenis || !tanggal) { showToast("Lengkapi semua data terlebih dahulu"); return; }
               if (photos.length === 0) { showToast("Upload minimal 1 foto"); return; }
-              // Cek duplikat
-              const dupKey = `${desa}|${jenis}|${tanggal}`;
-              const isDup = uploadHistory.some(h => `${h.desa}|${h.jenis}|${h.tanggal}` === dupKey);
-              if (isDup) {
-                if (!window.confirm(`⚠️ Anda sudah pernah upload foto untuk ${desa} pada ${jenis} tanggal ${tanggal}. Lanjutkan upload lagi?`)) return;
-              }
               setShowConfirm(true);
             }}>
               <span className="msymbol sm filled">send</span>
