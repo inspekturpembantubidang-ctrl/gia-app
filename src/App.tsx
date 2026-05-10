@@ -1148,7 +1148,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
             </div>
             {showHistory && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {uploadHistory.slice(0, 5).map((h, i) => (
+                {uploadHistory.filter(h => !desa || h.desa === desa).slice(0, 5).map((h, i) => (
                   <div key={i} style={{ fontSize: 12, background: "var(--light)", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 10, alignItems: "center" }}>
                     <span className="msymbol sm" style={{ color: "var(--jade)", flexShrink: 0 }}>check_circle</span>
                     <div style={{ flex: 1 }}>
