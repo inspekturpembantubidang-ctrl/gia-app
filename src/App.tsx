@@ -488,6 +488,7 @@ const css = `
   .chosen-check { width: 36px; height: 36px; background: var(--amber); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
   .apip-photo-thumb .zoom-hint { position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); color: white; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
   .apip-photo-thumb:hover .zoom-hint { opacity: 1; }
+  .apip-photo-thumb:hover .photo-delete-btn { opacity: 1 !important; }
 
   /* ── LIGHTBOX ── */
   .lightbox-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.94); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: fadeInLb 0.2s ease; }
@@ -823,7 +824,24 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
     try { return JSON.parse(localStorage.getItem("gia_upload_history") || "[]"); } catch { return []; }
   })();
   const [lightbox, setLightbox] = useState<{ url: string; idx: number } | null>(null);
+  const [driveStatus, setDriveStatus] = useState<"idle"|"checking"|"found"|"empty">("idle");
+  const [driveCount, setDriveCount] = useState(0);
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
+
+  // Cek foto yang sudah ada di Drive untuk desa+jenis+tanggal ini
+  useEffect(() => {
+    if (!desa || !jenis || !tanggal) { setDriveStatus("idle"); return; }
+    setDriveStatus("checking");
+    const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
+    fetch(url, { cache: "no-store" })
+      .then(r => r.json())
+      .then(data => {
+        const count = data.success && data.status?.[desa] ? data.status[desa].length : 0;
+        setDriveCount(count);
+        setDriveStatus(count > 0 ? "found" : "empty");
+      })
+      .catch(() => setDriveStatus("idle"));
+  }, [desa, jenis, tanggal]);
 
   // Pakai thumbnail kecil untuk preview agar UI tidak berat
   const handleFiles = useCallback(async (files: FileList | null) => {
@@ -1103,6 +1121,26 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
+        {/* Indikator foto sudah ada di Drive */}
+        {driveStatus === "checking" && (
+          <div className="fetch-status loading" style={{ marginBottom: 8 }}>
+            <div className="fetch-spin" /> Memeriksa foto yang sudah dikirim...
+          </div>
+        )}
+        {driveStatus === "found" && (
+          <div style={{ background: "var(--foam)", border: "1.5px solid var(--mist)", borderRadius: 12, padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <span className="msymbol sm filled" style={{ color: "var(--jade)" }}>check_circle</span>
+            <span style={{ color: "var(--pine)", fontWeight: 600 }}>Sudah ada <strong>{driveCount} foto</strong> terkirim untuk kegiatan ini.</span>
+            <span style={{ color: "var(--gray)", fontSize: 12 }}>Upload baru akan ditambahkan.</span>
+          </div>
+        )}
+        {driveStatus === "empty" && (
+          <div style={{ background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 12, padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <span className="msymbol sm" style={{ color: "#c2410c" }}>info</span>
+            <span style={{ color: "#c2410c", fontWeight: 600 }}>Belum ada foto yang terkirim untuk kegiatan ini.</span>
+          </div>
+        )}
+
         <div className="form-card">
           <div className="form-section-title">
             <span className="msymbol sm">photo_library</span> Foto Dokumentasi
@@ -1270,6 +1308,26 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
 
   const selectPhoto = (desa: string, photo: DrivePhoto) => {
     setSelectedPhotos(p => ({ ...p, [desa]: p[desa]?.fileId === photo.fileId ? null : photo }));
+  };
+
+  const deletePhoto = async (desa: string, photo: DrivePhoto) => {
+    if (!window.confirm(`Hapus foto "${photo.filename}" dari Drive? Tindakan ini tidak bisa dibatalkan.`)) return;
+    try {
+      // Hapus via Apps Script action=deleteFile
+      await fetch(`${APPS_SCRIPT_URL}?action=deleteFile&fileId=${encodeURIComponent(photo.fileId)}`, { cache: "no-store" });
+      // Update local state
+      setDriveData(prev => ({
+        ...prev,
+        [desa]: (prev[desa] || []).filter(p => p.fileId !== photo.fileId)
+      }));
+      // Batalkan pilihan jika foto yang dihapus adalah yang terpilih
+      if (selectedPhotos[desa]?.fileId === photo.fileId) {
+        setSelectedPhotos(p => ({ ...p, [desa]: null }));
+      }
+      showToast("Foto berhasil dihapus dari Drive");
+    } catch {
+      showToast("Gagal menghapus foto. Coba lagi.");
+    }
   };
 
   const handleGenerate = async () => {
@@ -1518,6 +1576,13 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                                     </div>
                                   )}
                                   <div className="zoom-hint"><span className="msymbol sm">zoom_in</span></div>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); deletePhoto(d, photo); }}
+                                    style={{ position: "absolute", top: 6, left: 6, background: "rgba(220,38,38,0.85)", backdropFilter: "blur(4px)", border: "none", borderRadius: 8, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0, transition: "opacity 0.15s", color: "white", zIndex: 3 }}
+                                    className="photo-delete-btn"
+                                  >
+                                    <span className="msymbol sm">delete</span>
+                                  </button>
                                 </div>
                               ))}
                             </div>
