@@ -508,8 +508,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const json = await resp.json();
         if (!json.success || !json.base64) throw new Error(json.error || "base64 kosong");
-        const b64 = json.base64.replace(/[\s
-]/g, "");
+        const b64 = json.base64.replace(/\s/g, "");
         if (b64.length < 100) throw new Error("base64 terlalu pendek");
         const mime = json.mime || "image/jpeg";
         const ext = mime === "image/png" ? "png" : "jpeg";
