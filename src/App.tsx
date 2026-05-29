@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_34rTFPzC7FzB2ZYmqh8dhXcnqm74dbeh4YIeYrsesnJyWVjKdBGORmxD2rujL376/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxTsARSVGvJJhvdU1ffrybLLpOz_lp9Bcjtgc1oDk5eXKorANYs9sMj0BViOofYBXRnYg/exec";
 
 const DESAS = [
   "Desa Pesisir Timur",
@@ -497,26 +497,51 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   let rIdCounter = 2;
   const imageParts: Record<string, string> = {};
 
-  // Fetch foto dari Google Drive thumbnail dan convert ke base64
+  // Fetch foto dari Google Drive via Apps Script (getFotoBase64) dengan retry + fallback
+  async function fetchFotoBase64(fileId: string): Promise<{ b64: string; mime: string } | null> {
+    // Percobaan 1-3: via Apps Script proxy (getFotoBase64)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        if (attempt > 1) await new Promise(r => setTimeout(r, 1500 * attempt));
+        const url = `${APPS_SCRIPT_URL}?action=getFotoBase64&fileId=${encodeURIComponent(fileId)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        if (!json.base64 || !json.mime) throw new Error("base64/mime kosong");
+        const b64 = json.base64.replace(/[\s\r\n]/g, "");
+        if (b64.length < 100) throw new Error("base64 terlalu pendek");
+        return { b64, mime: json.mime };
+      } catch { /* lanjut retry */ }
+    }
+    // Fallback: ambil via thumbnail Google Drive → blob → base64
+    try {
+      const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+      const resp = await fetch(thumbUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const mime = blob.type || "image/jpeg";
+      const b64 = await new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res((reader.result as string).split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+      return { b64, mime };
+    } catch { return null; }
+  }
+
   for (let i = 0; i < DESAS.length; i++) {
     const photo = desaPhotos[DESAS[i]];
     if (photo) {
-      try {
-        // Ambil foto via getFotoBase64 (JSON response, lebih reliable)
-        const proxyUrl = `${APPS_SCRIPT_URL}?action=getFotoBase64&fileId=${encodeURIComponent(photo.fileId)}`;
-        const resp = await fetch(proxyUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        if (!json.success || !json.base64) throw new Error(json.error || "base64 kosong");
-        const b64 = json.base64.replace(/\s/g, "");
-        if (b64.length < 100) throw new Error("base64 terlalu pendek");
-        const mime = json.mime || "image/jpeg";
+      const result = await fetchFotoBase64(photo.fileId);
+      if (result) {
+        const { b64, mime } = result;
         const ext = mime === "image/png" ? "png" : "jpeg";
         const rId = `rId${rIdCounter++}`;
         const partName = `media/img${i + 1}.${ext}`;
         imgRels.push({ rId, partName, mime });
         imageParts[partName] = b64;
-      } catch {
+      } else {
         imgRels.push(null);
       }
     } else {
