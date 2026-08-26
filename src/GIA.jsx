@@ -1361,6 +1361,7 @@ function ApipPortal({ onBack }) {
           onClose={() => setLightbox(null)}
           onToggleChoose={() => {
             selectPhoto(lightbox.desa, lightbox.url);
+            setLightbox(null);
           }}
         />
       )}

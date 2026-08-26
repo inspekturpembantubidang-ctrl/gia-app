@@ -1116,7 +1116,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
           caption={`${lightbox.desa} · ${lightbox.photo.filename}`}
           isChosen={selectedPhotos[lightbox.desa]?.fileId === lightbox.photo.fileId}
           onClose={() => setLightbox(null)}
-          onToggleChoose={() => selectPhoto(lightbox.desa, lightbox.photo)}
+          onToggleChoose={() => { selectPhoto(lightbox.desa, lightbox.photo); setLightbox(null); }}
         />
       )}
       <header className="topbar">
