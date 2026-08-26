@@ -380,6 +380,9 @@ const css = `
   .desa-body { padding: 0 20px 20px; border-top: 1px solid var(--border); }
   .desa-body-inner { padding-top: 16px; }
   .no-photos { text-align: center; padding: 32px; color: var(--gray); font-size: 14px; }
+  .reason-input { width: 100%; min-height: 60px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: var(--pine); background: var(--light); resize: vertical; transition: border-color 0.2s; }
+  .reason-input:focus { outline: none; border-color: var(--sage); background: var(--white); box-shadow: 0 0 0 3px rgba(82,183,136,0.1); }
+  .reason-input::placeholder { color: var(--gray); }
 
   .apip-photo-thumb { aspect-ratio: 4/3; border-radius: 14px; overflow: hidden; position: relative; cursor: pointer; border: 3px solid transparent; transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1); background: var(--light); }
   .apip-photo-thumb:hover { border-color: var(--sage); transform: scale(1.03); box-shadow: var(--shadow-md); }
@@ -523,7 +526,7 @@ function DriveImage({ fileId, alt, className }: { fileId: string; alt?: string; 
 }
 
 // ─── DOCX GENERATOR ───────────────────────────────────────────────────────────
-async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<string, DrivePhoto | null>) {
+async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<string, DrivePhoto | null>, reasons: Record<string, string> = {}) {
   if (!(window as unknown as Record<string, unknown>).JSZip) {
     await new Promise<void>((res, rej) => {
       const s = document.createElement("script");
@@ -617,11 +620,13 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   });
   relsXml += `\n</Relationships>`;
 
-  function makePhotoCell(colW: number, rel: { rId: string; partName: string; mime: string } | null, idx: number) {
+  function makePhotoCell(colW: number, rel: { rId: string; partName: string; mime: string } | null, idx: number, desaName: string) {
     if (rel) {
       return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="114300" distB="114300" distL="114300" distR="114300" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${FOTO_W}" cy="${FOTO_H}"/><wp:effectExtent l="0" t="0" r="635" b="9525"/><wp:docPr id="${idx + 10}" name="Foto${idx + 1}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${idx + 10}" name="Foto${idx + 1}"/><pic:cNvPicPr preferRelativeResize="0"/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rel.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${FOTO_W}" cy="${FOTO_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:ln/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:tc>`;
     } else {
-      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto ]</w:t></w:r></w:p></w:tc>`;
+      const reason = reasons[desaName] || "";
+      const reasonText = reason ? `&#10;Alasan: ${reason.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}` : "";
+      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto${reasonText} ]</w:t></w:r></w:p></w:tc>`;
     }
   }
 
@@ -638,7 +643,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     const leftIdx = row * 2; const rightIdx = row * 2 + 1;
     const leftDesa = DESAS[leftIdx] || null; const rightDesa = DESAS[rightIdx] || null;
     const leftRel = leftDesa ? imgRels[leftIdx] : null; const rightRel = rightDesa ? imgRels[rightIdx] : null;
-    tableRows += `<w:tr><w:trPr><w:trHeight w:val="3005"/></w:trPr>${leftDesa ? makeNameCell(COL1, leftDesa) : makeEmptyCell(COL1)}${leftDesa ? makePhotoCell(COL2, leftRel, leftIdx) : makeEmptyCell(COL2)}${rightDesa ? makeNameCell(COL3, rightDesa) : makeEmptyCell(COL3)}${rightDesa ? makePhotoCell(COL4, rightRel, rightIdx) : makeEmptyCell(COL4)}</w:tr>`;
+    tableRows += `<w:tr><w:trPr><w:trHeight w:val="3005"/></w:trPr>${leftDesa ? makeNameCell(COL1, leftDesa) : makeEmptyCell(COL1)}${leftDesa ? makePhotoCell(COL2, leftRel, leftIdx, leftDesa) : makeEmptyCell(COL2)}${rightDesa ? makeNameCell(COL3, rightDesa) : makeEmptyCell(COL3)}${rightDesa ? makePhotoCell(COL4, rightRel, rightIdx, rightDesa) : makeEmptyCell(COL4)}</w:tr>`;
   }
 
   function makeHeaderLine(label: string, value: string) {
@@ -998,9 +1003,10 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const [driveData, setDriveData] = useState<Record<string, DrivePhoto[]>>({});
   const [generating, setGenerating] = useState(false);
   const [lightbox, setLightbox] = useState<{ photo: DrivePhoto; desa: string } | null>(null);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
-  const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
+  const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length + Object.keys(reasons).filter(d => reasons[d] && !selectedPhotos[d]).length;
 
   // ✅ FIXED: Fetch foto langsung dari Google Drive via Apps Script
   const fetchPhotos = useCallback(async () => {
@@ -1053,11 +1059,11 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
 
   const handleGenerate = async () => {
     if (!jenis || !tanggal) { showToast("Pilih jenis kegiatan dan tanggal terlebih dahulu"); return; }
-    if (selectedCount === 0) { showToast("Pilih minimal 1 foto dari 1 desa"); return; }
+    if (selectedCount === 0) { showToast("Pilih minimal 1 foto atau tulis alasan untuk 1 desa"); return; }
     setGenerating(true);
     showToast("Mengunduh foto & membuat laporan...");
     try {
-      await generateDocx(jenis, tanggal, selectedPhotos);
+      await generateDocx(jenis, tanggal, selectedPhotos, reasons);
       showToast("Laporan berhasil diunduh!");
     } catch (e) {
       showToast("Gagal generate: " + (e as Error).message);
@@ -1254,7 +1260,13 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                         {!hasPhotos ? (
                           <div className="no-photos">
                             <span className="msymbol xl" style={{ color: "var(--border)", display: "block", marginBottom: 8 }}>photo_camera</span>
-                            Belum ada foto yang dikirim dari desa ini
+                            <p style={{ marginBottom: 10, color: "var(--gray)", fontSize: 14 }}>Belum ada foto yang dikirim dari desa ini</p>
+                            <textarea
+                              className="reason-input"
+                              placeholder="Tulis alasan desa tidak upload foto..."
+                              value={reasons[d] || ""}
+                              onChange={e => setReasons(r => ({ ...r, [d]: e.target.value }))}
+                            />
                           </div>
                         ) : (
                           <>

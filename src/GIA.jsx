@@ -693,6 +693,9 @@ const css = `
     color: var(--gray);
     font-size: 14px;
   }
+  .reason-input { width: 100%; min-height: 60px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: var(--pine); background: var(--light); resize: vertical; transition: border-color 0.2s; }
+  .reason-input:focus { outline: none; border-color: var(--sage); background: var(--white); box-shadow: 0 0 0 3px rgba(82,183,136,0.1); }
+  .reason-input::placeholder { color: var(--gray); }
 
   /* ── APIP PHOTO SELECT ─── */
   .apip-photo-thumb {
@@ -1022,7 +1025,7 @@ function Lightbox({ src, caption, isChosen, onClose, onToggleChoose }) {
 }
 
 // ─── DOCX GENERATOR ───────────────────────────────────────────────────────────
-async function generateDocx(jenis, tanggal, desaPhotos) {
+async function generateDocx(jenis, tanggal, desaPhotos, reasons = {}) {
   if (!window.JSZip) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
@@ -1112,7 +1115,7 @@ async function generateDocx(jenis, tanggal, desaPhotos) {
       <w:tc>
         <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
         <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto ]</w:t></w:r>
+          <w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto${reasons[desa] ? ' - Alasan: ' + xe(reasons[desa]) : ''} ]</w:t></w:r>
         </w:p>
       </w:tc>`;
 
@@ -1281,12 +1284,13 @@ function ApipPortal({ onBack }) {
   const [generating, setGenerating] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [reasons, setReasons] = useState({});
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
   const key = storeKey(jenis, tanggal);
   const storeForKey = jenis && tanggal ? (globalPhotoStore[key] || {}) : {};
   const desasWithPhotos = DESAS.filter(d => (storeForKey[d] || []).length > 0);
-  const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
+  const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length + Object.keys(reasons).filter(d => reasons[d] && !selectedPhotos[d]).length;
 
   // ✅ FIX: Fetch foto dari Google Drive setiap kali jenis/tanggal berubah
   useEffect(() => {
@@ -1339,7 +1343,7 @@ function ApipPortal({ onBack }) {
 
   const handleGenerate = async () => {
     if (!jenis || !tanggal) { showToast("Pilih jenis kegiatan dan tanggal terlebih dahulu"); return; }
-    if (selectedCount === 0) { showToast("Pilih minimal 1 foto dari 1 desa"); return; }
+    if (selectedCount === 0) { showToast("Pilih minimal 1 foto atau tulis alasan untuk 1 desa"); return; }
     setGenerating(true);
     try {
       // ✅ FIX: Konversi semua URL foto terpilih ke dataURL sebelum generate docx
@@ -1354,7 +1358,7 @@ function ApipPortal({ onBack }) {
           : await urlToDataUrl(url);
       }
       showToast("📄 Menyusun dokumen...");
-      await generateDocx(jenis, tanggal, desaPhotoDataUrls);
+      await generateDocx(jenis, tanggal, desaPhotoDataUrls, reasons);
       showToast("✅ Laporan berhasil diunduh!");
     } catch (e) {
       console.error("[GIA]", e);
@@ -1501,7 +1505,13 @@ function ApipPortal({ onBack }) {
                         {!hasPhotos ? (
                           <div className="no-photos">
                             <span className="msymbol xl" style={{ color: "var(--border)", display: "block", marginBottom: 8 }}>photo_camera</span>
-                            Belum ada foto yang dikirim dari desa ini
+                            <p style={{ marginBottom: 10, color: "var(--gray)", fontSize: 14 }}>Belum ada foto yang dikirim dari desa ini</p>
+                            <textarea
+                              className="reason-input"
+                              placeholder="Tulis alasan desa tidak upload foto..."
+                              value={reasons[d] || ""}
+                              onChange={e => setReasons(r => ({ ...r, [d]: e.target.value }))}
+                            />
                           </div>
                         ) : (
                           <>
