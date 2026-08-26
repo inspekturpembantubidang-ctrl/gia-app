@@ -1314,7 +1314,11 @@ function ApipPortal({ onBack }) {
   }, [jenis, tanggal]);
 
   const selectPhoto = (desa, url) => {
-    setSelectedPhotos(p => ({ ...p, [desa]: p[desa] === url ? null : url }));
+    setSelectedPhotos(p => {
+      const isDeselect = p[desa] === url;
+      if (!isDeselect) setExpandedDesa(null);
+      return { ...p, [desa]: isDeselect ? null : url };
+    });
   };
 
   const openLightbox = (desa, url) => {

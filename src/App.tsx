@@ -1040,7 +1040,11 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const desasWithPhotos = DESAS.filter(d => (driveData[d] || []).length > 0);
 
   const selectPhoto = (desa: string, photo: DrivePhoto) => {
-    setSelectedPhotos(p => ({ ...p, [desa]: p[desa]?.fileId === photo.fileId ? null : photo }));
+    setSelectedPhotos(p => {
+      const isDeselect = p[desa]?.fileId === photo.fileId;
+      if (!isDeselect) setExpandedDesa(null);
+      return { ...p, [desa]: isDeselect ? null : photo };
+    });
   };
 
   const handleGenerate = async () => {
