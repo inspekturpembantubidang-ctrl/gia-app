@@ -42,13 +42,6 @@ interface DrivePhoto {
   filename: string;
 }
 
-// Global in-memory store — sekarang menyimpan DrivePhoto[], bukan string[]
-const globalPhotoStore: Record<string, Record<string, DrivePhoto[]>> = {};
-
-function storeKey(jenis: string, tanggal: string) {
-  return `${jenis}__${tanggal}`;
-}
-
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -66,18 +59,6 @@ function fileToDataURL(file: File): Promise<string> {
     r.onerror = reject;
     r.readAsDataURL(file);
   });
-}
-
-function formatDate(iso: string) {
-  if (!iso) return "-";
-  const [y, m, d] = iso.split("-");
-  const months = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
-  return `${d} ${months[+m - 1]} ${y}`;
-}
-
-// Buat URL proxy foto via Apps Script (bypass CORS Google Drive)
-function proxyUrl(fileId: string) {
-  return `${APPS_SCRIPT_URL}?action=getPhoto&fileId=${fileId}`;
 }
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -747,8 +728,8 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
-    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024);
-    const tooLarge = Array.from(files).filter(f => f.size > 5 * 1024 * 1024);
+    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024);
+    const tooLarge = Array.from(files).filter(f => f.size > 10 * 1024 * 1024);
     if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 10mb)`);
     const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
     setPhotos(p => [...p, ...newPhotos].slice(0, 10));
@@ -1019,6 +1000,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
     try {
       const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
       const resp = await fetch(url, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
       if (data.success && data.status) {
@@ -1050,11 +1032,9 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const desasWithPhotos = DESAS.filter(d => (driveData[d] || []).length > 0);
 
   const selectPhoto = (desa: string, photo: DrivePhoto) => {
-    setSelectedPhotos(p => {
-      const isDeselect = p[desa]?.fileId === photo.fileId;
-      if (!isDeselect) setExpandedDesa(null);
-      return { ...p, [desa]: isDeselect ? null : photo };
-    });
+    const isDeselect = selectedPhotos[desa]?.fileId === photo.fileId;
+    if (!isDeselect) setExpandedDesa(null);
+    setSelectedPhotos(p => ({ ...p, [desa]: isDeselect ? null : photo }));
   };
 
   const handleGenerate = async () => {
@@ -1155,7 +1135,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
             <div className="field-group">
               <label className="field-label">Jenis Kegiatan</label>
               <div className="select-wrap">
-                <select className="field-select" value={jenis} onChange={e => { setJenis(e.target.value); setSelectedPhotos({}); }}>
+                <select className="field-select" value={jenis} onChange={e => { setJenis(e.target.value); setSelectedPhotos({}); setReasons({}); }}>
                   <option value="">— Pilih jenis —</option>
                   {JENIS_KEGIATAN.map(j => <option key={j}>{j}</option>)}
                 </select>
@@ -1164,7 +1144,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
             </div>
             <div className="field-group">
               <label className="field-label">Tanggal Kegiatan</label>
-              <input type="date" className="field-input" value={tanggal} onChange={e => { setTanggal(e.target.value); setSelectedPhotos({}); }} />
+              <input type="date" className="field-input" value={tanggal} onChange={e => { setTanggal(e.target.value); setSelectedPhotos({}); setReasons({}); }} />
             </div>
           </div>
 

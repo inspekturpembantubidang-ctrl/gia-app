@@ -1330,11 +1330,9 @@ function ApipPortal({ onBack }) {
   }, [jenis, tanggal]);
 
   const selectPhoto = (desa, url) => {
-    setSelectedPhotos(p => {
-      const isDeselect = p[desa] === url;
-      if (!isDeselect) setExpandedDesa(null);
-      return { ...p, [desa]: isDeselect ? null : url };
-    });
+    const isDeselect = selectedPhotos[desa] === url;
+    if (!isDeselect) setExpandedDesa(null);
+    setSelectedPhotos(p => ({ ...p, [desa]: isDeselect ? null : url }));
   };
 
   const openLightbox = (desa, url) => {
@@ -1411,7 +1409,7 @@ function ApipPortal({ onBack }) {
             <div className="field-group">
               <label className="field-label">Jenis Kegiatan</label>
               <div className="select-wrap">
-                <select className="field-select" value={jenis} onChange={e => { setJenis(e.target.value); setSelectedPhotos({}); }}>
+                <select className="field-select" value={jenis} onChange={e => { setJenis(e.target.value); setSelectedPhotos({}); setReasons({}); }}>
                   <option value="">— Pilih jenis —</option>
                   {JENIS_KEGIATAN.map(j => <option key={j}>{j}</option>)}
                 </select>
@@ -1420,7 +1418,7 @@ function ApipPortal({ onBack }) {
             </div>
             <div className="field-group">
               <label className="field-label">Tanggal Kegiatan</label>
-              <input type="date" className="field-input" value={tanggal} onChange={e => { setTanggal(e.target.value); setSelectedPhotos({}); }} />
+              <input type="date" className="field-input" value={tanggal} onChange={e => { setTanggal(e.target.value); setSelectedPhotos({}); setReasons({}); }} />
             </div>
           </div>
         </div>
@@ -1575,7 +1573,7 @@ function ApipPortal({ onBack }) {
         )}
       </div>
 
-      {jenis && tanggal && (
+      {jenis && tanggal && !loadingPhotos && (
         <div className="generate-panel">
           <div className="gen-inner">
             <div className="gen-progress-text">
