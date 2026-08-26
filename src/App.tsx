@@ -390,6 +390,10 @@ const css = `
   .chosen-check { width: 36px; height: 36px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
   .apip-photo-thumb .zoom-hint { position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.55); color: white; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
   .apip-photo-thumb:hover .zoom-hint { opacity: 1; }
+  .quick-select-btn { position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); background: rgba(0,0,0,0.35); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 3; opacity: 0; transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .quick-select-btn:hover { transform: scale(1.15); background: rgba(82,183,136,0.6); border-color: var(--sage); }
+  .quick-select-btn.active { opacity: 1; background: var(--sage); border-color: var(--sage); }
+  .apip-photo-thumb:hover .quick-select-btn { opacity: 1; }
 
   .lightbox-overlay { position: fixed; inset: 0; background: rgba(13,40,24,0.92); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: fadeInLb 0.25s ease; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
   @keyframes fadeInLb { from { opacity: 0; } to { opacity: 1; } }
@@ -1255,7 +1259,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                         ) : (
                           <>
                             <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 12 }}>
-                              Klik foto untuk <strong>memperbesar &amp; memilih</strong>. Foto bertanda bintang akan masuk ke laporan.
+                              Klik foto untuk <strong>memperbesar</strong>. Klik <strong>centang</strong> untuk pilih cepat.
                             </p>
                             <div className="apip-photo-grid">
                               {photos.map((photo, pi) => (
@@ -1266,6 +1270,12 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                                 >
                                   {/* ✅ Gunakan Google Drive thumbnail langsung */}
                                   <DriveImage fileId={photo.fileId} alt={`foto-${pi + 1}`} />
+                                  <button
+                                    className={`quick-select-btn${chosen?.fileId === photo.fileId ? " active" : ""}`}
+                                    onClick={(e) => { e.stopPropagation(); selectPhoto(d, photo); }}
+                                  >
+                                    <span className="msymbol sm">{chosen?.fileId === photo.fileId ? "check" : "add"}</span>
+                                  </button>
                                   {chosen?.fileId === photo.fileId && (
                                     <div className="chosen-badge">
                                       <div className="chosen-check">

@@ -743,6 +743,18 @@ const css = `
     pointer-events: none;
   }
   .apip-photo-thumb:hover .zoom-hint { opacity: 1; }
+  .quick-select-btn {
+    position: absolute; top: 6px; left: 6px; width: 30px; height: 30px;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,0.8);
+    background: rgba(0,0,0,0.35); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 3; opacity: 0;
+    transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .quick-select-btn:hover { transform: scale(1.15); background: rgba(82,183,136,0.6); border-color: var(--sage); }
+  .quick-select-btn.active { opacity: 1; background: var(--sage); border-color: var(--sage); }
+  .apip-photo-thumb:hover .quick-select-btn { opacity: 1; }
 
   /* ── LIGHTBOX ─── */
   .lightbox-overlay {
@@ -1494,7 +1506,7 @@ function ApipPortal({ onBack }) {
                         ) : (
                           <>
                             <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 12 }}>
-                              Klik foto untuk <strong>memperbesar & memilih</strong>. Foto bertanda ⭐ akan masuk ke laporan.
+                              Klik foto untuk <strong>memperbesar</strong>. Klik <strong>centang</strong> untuk pilih cepat.
                             </p>
                             <div className="apip-photo-grid">
                               {photos.map((url, pi) => (
@@ -1504,6 +1516,12 @@ function ApipPortal({ onBack }) {
                                   onClick={() => openLightbox(d, url)}
                                 >
                                   <img src={url} alt={`foto-${pi + 1}`} />
+                                  <button
+                                    className={`quick-select-btn${chosen === url ? " active" : ""}`}
+                                    onClick={(e) => { e.stopPropagation(); selectPhoto(d, url); }}
+                                  >
+                                    <span className="msymbol sm">{chosen === url ? "check" : "add"}</span>
+                                  </button>
                                   {chosen === url && (
                                     <div className="chosen-badge">
                                       <div className="chosen-check">
