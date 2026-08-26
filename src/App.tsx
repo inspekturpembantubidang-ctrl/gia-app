@@ -497,6 +497,17 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   let rIdCounter = 2;
   const imageParts: Record<string, string> = {};
 
+  // Helper: clean & validate base64 string
+  function cleanBase64(raw: string): string {
+    let b64 = raw.replace(/[\s\r\n\t]/g, "");
+    // Hapus data URL prefix jika ada (contoh: "data:image/jpeg;base64,")
+    const commaIdx = b64.indexOf(",");
+    if (commaIdx !== -1) b64 = b64.substring(commaIdx + 1);
+    // Fix padding agar panjang habis dibagi 4
+    while (b64.length % 4 !== 0) b64 += "=";
+    return b64;
+  }
+
   // Fetch foto dari Google Drive via Apps Script (getFotoBase64) dengan retry + fallback
   async function fetchFotoBase64(fileId: string): Promise<{ b64: string; mime: string } | null> {
     // Percobaan 1-3: via Apps Script proxy (getFotoBase64)
@@ -508,8 +519,10 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const json = await resp.json();
         if (!json.base64 || !json.mime) throw new Error("base64/mime kosong");
-        const b64 = json.base64.replace(/[\s\r\n]/g, "");
+        const b64 = cleanBase64(json.base64);
         if (b64.length < 100) throw new Error("base64 terlalu pendek");
+        // Verifikasi base64 valid dengan atob
+        atob(b64.substring(0, 100));
         return { b64, mime: json.mime };
       } catch { /* lanjut retry */ }
     }
