@@ -31,10 +31,6 @@ const PIC_DATA: Record<string, { nama: string; hp: string }> = {
   "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "0812070420122" },
 };
 
-const APIP_USERS = [
-  { nama: "Yopi Palintino, S.T.", password: "nyamnyam1993" },
-];
-
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface DrivePhoto {
   fileId: string;
@@ -974,6 +970,8 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const [authed, setAuthed] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginInput, setLoginInput] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginUser, setLoginUser] = useState("");
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   const [expandedDesa, setExpandedDesa] = useState<string | null>(null);
@@ -1037,6 +1035,27 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
     setSelectedPhotos(p => ({ ...p, [desa]: isDeselect ? null : photo }));
   };
 
+  const handleLogin = async () => {
+    if (!loginInput.trim()) { setLoginError("Masukkan password"); return; }
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const url = `${APPS_SCRIPT_URL}?action=login&password=${encodeURIComponent(loginInput.trim())}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.success) {
+        setAuthed(true);
+        setLoginUser(data.nama || "APIP");
+      } else {
+        setLoginError(data.error || "Password salah. Silakan coba lagi.");
+      }
+    } catch {
+      setLoginError("Gagal menghubungi server. Periksa koneksi internet.");
+    }
+    setLoginLoading(false);
+  };
+
   const handleGenerate = async () => {
     if (!jenis || !tanggal) { showToast("Pilih jenis kegiatan dan tanggal terlebih dahulu"); return; }
     if (selectedCount === 0) { showToast("Pilih minimal 1 foto atau tulis alasan untuk 1 desa"); return; }
@@ -1077,20 +1096,22 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
                 type="password" className="field-input" placeholder="••••••••••••"
                 value={loginInput}
                 onChange={e => { setLoginInput(e.target.value); setLoginError(""); }}
-                onKeyDown={e => {
-                  if (e.key === "Enter") {
-                    const user = APIP_USERS.find(u => u.password === loginInput);
-                    if (user) setAuthed(true); else setLoginError("Password salah. Silakan coba lagi.");
-                  }
-                }}
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                disabled={loginLoading}
               />
               {loginError && <div style={{ fontSize: 12, color: "var(--red)", marginTop: 6, fontWeight: 600 }}>⚠️ {loginError}</div>}
             </div>
-            <button className="btn-primary btn-gold" onClick={() => {
-              const user = APIP_USERS.find(u => u.password === loginInput);
-              if (user) setAuthed(true); else setLoginError("Password salah. Silakan coba lagi.");
-            }}>
-              <span className="msymbol sm">login</span> Masuk Portal APIP
+            <button className="btn-primary btn-gold" onClick={handleLogin} disabled={loginLoading}>
+              {loginLoading ? (
+                <>
+                  <div style={{ width: 16, height: 16, border: "2px solid var(--forest)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                  Memverifikasi...
+                </>
+              ) : (
+                <>
+                  <span className="msymbol sm">login</span> Masuk Portal APIP
+                </>
+              )}
             </button>
           </div>
         </div>

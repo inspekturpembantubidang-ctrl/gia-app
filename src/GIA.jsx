@@ -1277,6 +1277,10 @@ async function urlToDataUrl(url) {
 }
 
 function ApipPortal({ onBack }) {
+  const [authed, setAuthed] = useState(false);
+  const [loginInput, setLoginInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   const [expandedDesa, setExpandedDesa] = useState(null);
@@ -1364,6 +1368,66 @@ function ApipPortal({ onBack }) {
     } 
     setGenerating(false);
   };
+
+  const handleLogin = async () => {
+    if (!loginInput.trim()) { setLoginError("Masukkan password"); return; }
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const url = `${APPS_SCRIPT_URL}?action=login&password=${encodeURIComponent(loginInput.trim())}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.success) {
+        setAuthed(true);
+      } else {
+        setLoginError(data.error || "Password salah. Silakan coba lagi.");
+      }
+    } catch {
+      setLoginError("Gagal menghubungi server. Periksa koneksi internet.");
+    }
+    setLoginLoading(false);
+  };
+
+  if (!authed) {
+    return (
+      <div className="app-shell">
+        <header className="topbar">
+          <button className="back-btn" onClick={onBack}>
+            <span className="msymbol sm">arrow_back</span> Beranda
+          </button>
+          <div className="topbar-brand">
+            <div className="topbar-brand-dot" style={{ background: "var(--gold)" }} />
+            Gerakan Indonesia Asri
+          </div>
+          <div className="role-pill" style={{ color: "#b58a00", borderColor: "var(--gold)", background: "rgba(233,196,106,0.12)" }}>APIP</div>
+        </header>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div className="status-card scale-in" style={{ maxWidth: 380, width: "100%" }}>
+            <div className="status-icon" style={{ background: "rgba(233,196,106,0.15)", border: "2px solid var(--gold)" }}>
+              <span className="msymbol xl" style={{ color: "var(--gold)" }}>lock</span>
+            </div>
+            <div className="status-title" style={{ marginBottom: 6 }}>Portal APIP</div>
+            <div className="status-sub" style={{ marginBottom: 24 }}>Masukkan password untuk mengakses portal pengawas internal.</div>
+            <div className="field-group" style={{ marginBottom: 16 }}>
+              <label className="field-label">Password</label>
+              <input
+                type="password" className="field-input" placeholder="••••••••••••"
+                value={loginInput}
+                onChange={e => { setLoginInput(e.target.value); setLoginError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                disabled={loginLoading}
+              />
+              {loginError && <div style={{ fontSize: 12, color: "var(--red)", marginTop: 6, fontWeight: 600 }}>{loginError}</div>}
+            </div>
+            <button className="btn-primary btn-gold" onClick={handleLogin} disabled={loginLoading}>
+              {loginLoading ? "Memverifikasi..." : "Masuk Portal APIP"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
