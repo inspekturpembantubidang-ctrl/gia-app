@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_34rTFPzC7FzB2ZYmqh8dhXcnqm74dbeh4YIeYrsesnJyWVjKdBGORmxD2rujL376/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLuABL1wfEMuBzB0RtelyDKDcvo5eJUtABYwPeqTfog7I9lthiOQsslwgVEim6pT-f/exec";
 
 const DESAS = [
   "Desa Pesisir Timur",
