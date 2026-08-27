@@ -1240,7 +1240,7 @@ async function generateDocx(jenis, tanggal, desaPhotos, reasons = {}) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g,"_")}_${tanggal}.doc`;
+  a.download = `Rekap Yopi ${jenis} ${tanggal}.docx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

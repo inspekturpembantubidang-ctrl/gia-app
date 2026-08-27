@@ -656,7 +656,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", compression: "DEFLATE", compressionOptions: { level: 6 } });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.docx`;
+  a.href = url; a.download = `Rekap Yopi ${jenis} ${tanggal}.docx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
