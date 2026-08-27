@@ -571,21 +571,27 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   const noBorder = { style: BorderStyle.SINGLE, size: 1, color: "000000" };
   const cellBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
 
-  function makePhotoCell(imgData: { buffer: ArrayBuffer; mime: string } | null, desaName: string) {
+  // Original column widths (DXA)
+  const COL_NAME_LEFT = 1545;
+  const COL_PHOTO_LEFT = 3825;
+  const COL_NAME_RIGHT = 1575;
+  const COL_PHOTO_RIGHT = 3660;
+
+  function makePhotoCell(imgData: { buffer: ArrayBuffer; mime: string } | null, desaName: string, colWidth: number) {
     if (imgData) {
       const imgType = imgData.mime === "image/png" ? "png" : "jpg";
       return new TableCell({
         borders: cellBorders,
-        width: { size: 3825, type: WidthType.DXA },
+        width: { size: colWidth, type: WidthType.DXA },
         verticalAlign: VerticalAlign.CENTER,
         children: [
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 100, after: 100 },
+            spacing: { before: 0, after: 0 },
             children: [
               new ImageRun({
                 data: imgData.buffer,
-                transformation: { width: 480, height: 360 },
+                transformation: { width: 254, height: 191 },
                 type: imgType as "jpg" | "png",
               }),
             ],
@@ -597,7 +603,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
       const text = reason ? `[ Tidak ada foto — ${reason} ]` : "[ Tidak ada foto ]";
       return new TableCell({
         borders: cellBorders,
-        width: { size: 3825, type: WidthType.DXA },
+        width: { size: colWidth, type: WidthType.DXA },
         verticalAlign: VerticalAlign.CENTER,
         children: [
           new Paragraph({
@@ -611,14 +617,15 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     }
   }
 
-  function makeNameCell(desaName: string) {
+  function makeNameCell(desaName: string, colWidth: number) {
     return new TableCell({
       borders: cellBorders,
-      width: { size: 1545, type: WidthType.DXA },
+      width: { size: colWidth, type: WidthType.DXA },
       verticalAlign: VerticalAlign.CENTER,
       children: [
         new Paragraph({
           alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 0 },
           children: [
             new TextRun({ text: desaName, font: "Calibri", size: 20 }),
           ],
@@ -627,10 +634,10 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     });
   }
 
-  function makeEmptyCell() {
+  function makeEmptyCell(colWidth: number) {
     return new TableCell({
       borders: cellBorders,
-      width: { size: 1545, type: WidthType.DXA },
+      width: { size: colWidth, type: WidthType.DXA },
       children: [new Paragraph({ children: [] })],
     });
   }
@@ -643,10 +650,10 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     const rightDesa = DESAS[rightIdx] || null;
 
     const cells = [
-      leftDesa ? makeNameCell(leftDesa) : makeEmptyCell(),
-      leftDesa ? makePhotoCell(imageBuffers[leftIdx], leftDesa) : makeEmptyCell(),
-      rightDesa ? makeNameCell(rightDesa) : makeEmptyCell(),
-      rightDesa ? makePhotoCell(imageBuffers[rightIdx], rightDesa) : makeEmptyCell(),
+      leftDesa ? makeNameCell(leftDesa, COL_NAME_LEFT) : makeEmptyCell(COL_NAME_LEFT),
+      leftDesa ? makePhotoCell(imageBuffers[leftIdx], leftDesa, COL_PHOTO_LEFT) : makeEmptyCell(COL_PHOTO_LEFT),
+      rightDesa ? makeNameCell(rightDesa, COL_NAME_RIGHT) : makeEmptyCell(COL_NAME_RIGHT),
+      rightDesa ? makePhotoCell(imageBuffers[rightIdx], rightDesa, COL_PHOTO_RIGHT) : makeEmptyCell(COL_PHOTO_RIGHT),
     ];
     tableRows.push(new TableRow({ height: { value: 3005, rule: "atLeast" }, children: cells }));
   }
@@ -676,7 +683,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
         makeHeaderLine("DISETUJUI OLEH", TEMPLATE.penyetuju),
         new Paragraph({ spacing: { after: 0 }, children: [] }),
         new Table({
-          width: { size: 10506, type: WidthType.DXA },
+          width: { size: 10605, type: WidthType.DXA },
           rows: tableRows,
         }),
         new Paragraph({ children: [] }),
