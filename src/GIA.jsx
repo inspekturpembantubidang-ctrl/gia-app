@@ -1240,7 +1240,7 @@ async function generateDocx(jenis, tanggal, desaPhotos, reasons = {}) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g,"_")}_${tanggal}.docx`;
+  a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g,"_")}_${tanggal}.doc`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1656,7 +1656,7 @@ function ApipPortal({ onBack }) {
               ) : (
                 <>
                   <span className="msymbol sm filled">download</span>
-                  Download .docx
+                  Download .doc
                 </>
               )}
             </button>

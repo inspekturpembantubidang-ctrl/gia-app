@@ -660,7 +660,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", compression: "DEFLATE", compressionOptions: { level: 6 } });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.docx`;
+  a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.doc`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
@@ -693,7 +693,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: string) => void }) {
             </div>
             <div>
               <div className="role-card-title">Portal<br />APIP</div>
-              <div className="role-card-desc">Tinjau foto dari semua desa dan generate laporan rekap .docx</div>
+              <div className="role-card-desc">Tinjau foto dari semua desa dan generate laporan rekap .doc</div>
             </div>
             <div className="role-arrow" style={{ color: "var(--gold)" }}>Masuk <span className="msymbol sm">arrow_forward</span></div>
           </div>
@@ -1339,7 +1339,7 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
               {generating ? (
                 <><div style={{ width: 16, height: 16, border: "2px solid var(--forest)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Membuat...</>
               ) : (
-                <><span className="msymbol sm filled">download</span>Download .docx</>
+                <><span className="msymbol sm filled">download</span>Download .doc</>
               )}
             </button>
           </div>
