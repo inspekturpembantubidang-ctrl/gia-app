@@ -504,40 +504,20 @@ function DriveImage({ fileId, alt, className }: { fileId: string; alt?: string; 
 
 // ─── DOCX GENERATOR ───────────────────────────────────────────────────────────
 async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<string, DrivePhoto | null>, reasons: Record<string, string> = {}) {
-  if (!(window as unknown as Record<string, unknown>).JSZip) {
-    await new Promise<void>((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-      s.onload = () => res(); s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-
-  const COL1 = 1545; const COL2 = 3825; const COL3 = 1575; const COL4 = 3660;
-  const TBL_W = COL1 + COL2 + COL3 + COL4;
-  const FOTO_W = 2418715; const FOTO_H = 1914525;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const JSZip = (window as unknown as Record<string, any>).JSZip;
-  const zip = new JSZip();
-  const imgRels: ({ rId: string; partName: string; mime: string } | null)[] = [];
-  let rIdCounter = 2;
-  const imageParts: Record<string, string> = {};
+  const docx = await import("docx");
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ImageRun, HeadingLevel, PageOrientation, VerticalAlign, ShadingType } = docx;
 
   // Helper: clean & validate base64 string
   function cleanBase64(raw: string): string {
     let b64 = raw.replace(/[\s\r\n\t]/g, "");
-    // Hapus data URL prefix jika ada (contoh: "data:image/jpeg;base64,")
     const commaIdx = b64.indexOf(",");
     if (commaIdx !== -1) b64 = b64.substring(commaIdx + 1);
-    // Fix padding agar panjang habis dibagi 4
     while (b64.length % 4 !== 0) b64 += "=";
     return b64;
   }
 
   // Fetch foto dari Google Drive via Apps Script (getFotoBase64) dengan retry + fallback
   async function fetchFotoBase64(fileId: string): Promise<{ b64: string; mime: string } | null> {
-    // Percobaan 1-3: via Apps Script proxy (getFotoBase64)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         if (attempt > 1) await new Promise(r => setTimeout(r, 1500 * attempt));
@@ -548,12 +528,10 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
         if (!json.base64 || !json.mime) throw new Error("base64/mime kosong");
         const b64 = cleanBase64(json.base64);
         if (b64.length < 100) throw new Error("base64 terlalu pendek");
-        // Verifikasi base64 valid dengan atob
         atob(b64.substring(0, 100));
         return { b64, mime: json.mime };
       } catch { /* lanjut retry */ }
     }
-    // Fallback: ambil via thumbnail Google Drive → blob → base64
     try {
       const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
       const resp = await fetch(thumbUrl);
@@ -570,97 +548,146 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     } catch { return null; }
   }
 
+  // Fetch semua foto
+  const imageBuffers: Record<number, { buffer: ArrayBuffer; mime: string } | null> = {};
   for (let i = 0; i < DESAS.length; i++) {
     const photo = desaPhotos[DESAS[i]];
     if (photo) {
       const result = await fetchFotoBase64(photo.fileId);
       if (result) {
-        const { b64, mime } = result;
-        const ext = mime === "image/png" ? "png" : "jpeg";
-        const rId = `rId${rIdCounter++}`;
-        const partName = `media/img${i + 1}.${ext}`;
-        imgRels.push({ rId, partName, mime });
-        imageParts[partName] = b64;
+        const binary = atob(result.b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+        imageBuffers[i] = { buffer: bytes.buffer, mime: result.mime };
       } else {
-        imgRels.push(null);
+        imageBuffers[i] = null;
       }
     } else {
-      imgRels.push(null);
+      imageBuffers[i] = null;
     }
   }
 
-  let relsXml = `<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
-  imgRels.forEach(r => {
-    if (r) relsXml += `\n  <Relationship Id="${r.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${r.partName}"/>`;
-  });
-  relsXml += `\n</Relationships>`;
+  // Build table rows (2 desa per baris, 4 baris total)
+  const noBorder = { style: BorderStyle.SINGLE, size: 1, color: "000000" };
+  const cellBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
 
-  function makePhotoCell(colW: number, rel: { rId: string; partName: string; mime: string } | null, idx: number, desaName: string) {
-    if (rel) {
-      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="114300" distB="114300" distL="114300" distR="114300" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${FOTO_W}" cy="${FOTO_H}"/><wp:effectExtent l="0" t="0" r="635" b="9525"/><wp:docPr id="${idx + 10}" name="Foto${idx + 1}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${idx + 10}" name="Foto${idx + 1}"/><pic:cNvPicPr preferRelativeResize="0"/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rel.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${FOTO_W}" cy="${FOTO_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:ln/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:tc>`;
+  function makePhotoCell(imgData: { buffer: ArrayBuffer; mime: string } | null, desaName: string) {
+    if (imgData) {
+      const imgType = imgData.mime === "image/png" ? "png" : "jpg";
+      return new TableCell({
+        borders: cellBorders,
+        width: { size: 3825, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 100, after: 100 },
+            children: [
+              new ImageRun({
+                data: imgData.buffer,
+                transformation: { width: 480, height: 360 },
+                type: imgType as "jpg" | "png",
+              }),
+            ],
+          }),
+        ],
+      });
     } else {
       const reason = reasons[desaName] || "";
-      const reasonText = reason ? `&#10;Alasan: ${reason.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}` : "";
-      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto${reasonText} ]</w:t></w:r></w:p></w:tc>`;
+      const text = reason ? `[ Tidak ada foto — ${reason} ]` : "[ Tidak ada foto ]";
+      return new TableCell({
+        borders: cellBorders,
+        width: { size: 3825, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({ text, italics: true, color: "999999", font: "Calibri", size: 22 }),
+            ],
+          }),
+        ],
+      });
     }
   }
 
-  function makeNameCell(colW: number, desaName: string) {
-    return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:t>${desaName}</w:t></w:r></w:p></w:tc>`;
+  function makeNameCell(desaName: string) {
+    return new TableCell({
+      borders: cellBorders,
+      width: { size: 1545, type: WidthType.DXA },
+      verticalAlign: VerticalAlign.CENTER,
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: desaName, font: "Calibri", size: 20 }),
+          ],
+        }),
+      ],
+    });
   }
 
-  function makeEmptyCell(colW: number) {
-    return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p></w:tc>`;
+  function makeEmptyCell() {
+    return new TableCell({
+      borders: cellBorders,
+      width: { size: 1545, type: WidthType.DXA },
+      children: [new Paragraph({ children: [] })],
+    });
   }
 
-  let tableRows = "";
+  const tableRows: TableRow[] = [];
   for (let row = 0; row < 4; row++) {
-    const leftIdx = row * 2; const rightIdx = row * 2 + 1;
-    const leftDesa = DESAS[leftIdx] || null; const rightDesa = DESAS[rightIdx] || null;
-    const leftRel = leftDesa ? imgRels[leftIdx] : null; const rightRel = rightDesa ? imgRels[rightIdx] : null;
-    tableRows += `<w:tr><w:trPr><w:trHeight w:val="3005"/></w:trPr>${leftDesa ? makeNameCell(COL1, leftDesa) : makeEmptyCell(COL1)}${leftDesa ? makePhotoCell(COL2, leftRel, leftIdx, leftDesa) : makeEmptyCell(COL2)}${rightDesa ? makeNameCell(COL3, rightDesa) : makeEmptyCell(COL3)}${rightDesa ? makePhotoCell(COL4, rightRel, rightIdx, rightDesa) : makeEmptyCell(COL4)}</w:tr>`;
+    const leftIdx = row * 2;
+    const rightIdx = row * 2 + 1;
+    const leftDesa = DESAS[leftIdx] || null;
+    const rightDesa = DESAS[rightIdx] || null;
+
+    const cells = [
+      leftDesa ? makeNameCell(leftDesa) : makeEmptyCell(),
+      leftDesa ? makePhotoCell(imageBuffers[leftIdx], leftDesa) : makeEmptyCell(),
+      rightDesa ? makeNameCell(rightDesa) : makeEmptyCell(),
+      rightDesa ? makePhotoCell(imageBuffers[rightIdx], rightDesa) : makeEmptyCell(),
+    ];
+    tableRows.push(new TableRow({ height: { value: 3005, rule: "atLeast" }, children: cells }));
   }
 
   function makeHeaderLine(label: string, value: string) {
-    return `<w:p><w:pPr><w:spacing w:after="0"/><w:tabs><w:tab w:val="left" w:pos="2268"/><w:tab w:val="left" w:pos="3261"/></w:tabs></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${label}</w:t><w:tab/><w:t>:</w:t><w:tab/><w:t>${value}</w:t></w:r></w:p>`;
+    return new Paragraph({
+      spacing: { after: 0 },
+      children: [
+        new TextRun({ text: label, font: "Calibri", size: 22 }),
+        new TextRun({ text: "\t: ", font: "Calibri", size: 22 }),
+        new TextRun({ text: value, font: "Calibri", size: 22 }),
+      ],
+    });
   }
 
-  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14">
-  <w:body>
-    ${makeHeaderLine("DISUSUN OLEH", TEMPLATE.penyusun)}
-    ${makeHeaderLine("DIREVIU OLEH", TEMPLATE.pereviu)}
-    ${makeHeaderLine("DISETUJUI OLEH", TEMPLATE.penyetuju)}
-    <w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>
-    <w:tbl>
-      <w:tblPr><w:tblW w:w="${TBL_W}" w:type="dxa"/><w:tblInd w:w="-123" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>
-      <w:tblGrid><w:gridCol w:w="${COL1}"/><w:gridCol w:w="${COL2}"/><w:gridCol w:w="${COL3}"/><w:gridCol w:w="${COL4}"/></w:tblGrid>
-      ${tableRows}
-    </w:tbl>
-    <w:p/>
-    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
-  </w:body>
-</w:document>`;
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 720, right: 720, bottom: 720, left: 720, header: 708, footer: 708 },
+        },
+      },
+      children: [
+        makeHeaderLine("DISUSUN OLEH", TEMPLATE.penyusun),
+        makeHeaderLine("DIREVIU OLEH", TEMPLATE.pereviu),
+        makeHeaderLine("DISETUJUI OLEH", TEMPLATE.penyetuju),
+        new Paragraph({ spacing: { after: 0 }, children: [] }),
+        new Table({
+          width: { size: 10506, type: WidthType.DXA },
+          rows: tableRows,
+        }),
+        new Paragraph({ children: [] }),
+      ],
+    }],
+  });
 
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="id-ID"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="200" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
-</w:styles>`;
-
-  zip.folder("word"); zip.folder("word/media"); zip.folder("word/_rels"); zip.folder("_rels");
-  zip.file("word/document.xml", docXml);
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/_rels/document.xml.rels", relsXml);
-  for (const [name, b64] of Object.entries(imageParts)) { zip.file(`word/${name}`, b64, { base64: true }); }
-  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
-  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
-
-  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.doc`;
+  a.href = url; a.download = `Laporan_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}.docx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
