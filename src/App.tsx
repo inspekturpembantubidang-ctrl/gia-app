@@ -513,11 +513,20 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     });
   }
 
+  const COL1 = 1545; const COL2 = 3825; const COL3 = 1575; const COL4 = 3660;
+  const TBL_W = COL1 + COL2 + COL3 + COL4;
+  const FOTO_W = 2418715; const FOTO_H = 1914525;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const JSZip = (window as unknown as Record<string, any>).JSZip;
   const zip = new JSZip();
+  const imgRels: ({ rId: string; partName: string; mime: string } | null)[] = [];
+  let rIdCounter = 2;
+  const imageParts: Record<string, string> = {};
 
-  // Helper: clean & validate base64 string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const xe = (s: any) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+
   function cleanBase64(raw: string): string {
     let b64 = raw.replace(/[\s\r\n\t]/g, "");
     const commaIdx = b64.indexOf(",");
@@ -526,10 +535,6 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     return b64;
   }
 
-  // Helper: escape XML
-  const xe = (s: string) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
-
-  // Fetch foto dari Google Drive via Apps Script (getFotoBase64) dengan retry + fallback
   async function fetchFotoBase64(fileId: string): Promise<{ b64: string; mime: string } | null> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -561,207 +566,92 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     } catch { return null; }
   }
 
-  // Kumpulkan gambar
-  const images: Record<string, { rId: string; ext: string; b64: string; mime: string }> = {};
-  let rIdN = 10;
-  for (const desa of DESAS) {
-    const photo = desaPhotos[desa];
-    if (!photo) continue;
-    const result = await fetchFotoBase64(photo.fileId);
-    if (!result) continue;
-    const ext = result.mime === "image/png" ? "png" : "jpeg";
-    images[desa] = { rId: `rId${rIdN++}`, ext, b64: result.b64, mime: result.mime };
+  for (let i = 0; i < DESAS.length; i++) {
+    const photo = desaPhotos[DESAS[i]];
+    if (photo) {
+      const result = await fetchFotoBase64(photo.fileId);
+      if (result) {
+        const { b64, mime } = result;
+        const ext = mime === "image/png" ? "png" : "jpeg";
+        const rId = `rId${rIdCounter++}`;
+        const partName = `media/img${i + 1}.${ext}`;
+        imgRels.push({ rId, partName, mime });
+        imageParts[partName] = b64;
+      } else {
+        imgRels.push(null);
+      }
+    } else {
+      imgRels.push(null);
+    }
   }
 
-  // Tambah gambar ke zip
-  for (const desa of DESAS) {
-    const img = images[desa];
-    if (!img) continue;
-    zip.file(`word/media/${desa.replace(/[^a-zA-Z0-9]/g, "_")}.${img.ext}`, img.b64, { base64: true });
-  }
-
-  // relationships
-  let rels = `<?xml version="1.0" encoding="UTF-8"?>
+  let relsXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
-  for (const desa of DESAS) {
-    const img = images[desa];
-    if (!img) continue;
-    rels += `\n  <Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${desa.replace(/[^a-zA-Z0-9]/g, "_")}.${img.ext}"/>`;
+  imgRels.forEach(r => {
+    if (r) relsXml += `\n  <Relationship Id="${r.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${r.partName}"/>`;
+  });
+  relsXml += `\n</Relationships>`;
+
+  function makePhotoCell(colW: number, rel: { rId: string; partName: string; mime: string } | null, idx: number, desaName: string) {
+    if (rel) {
+      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="114300" distB="114300" distL="114300" distR="114300" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${FOTO_W}" cy="${FOTO_H}"/><wp:effectExtent l="0" t="0" r="635" b="9525"/><wp:docPr id="${idx + 10}" name="Foto${idx + 1}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${idx + 10}" name="Foto${idx + 1}"/><pic:cNvPicPr preferRelativeResize="0"/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rel.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${FOTO_W}" cy="${FOTO_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:ln/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:tc>`;
+    } else {
+      const reason = reasons[desaName] || "";
+      const reasonText = reason ? ` - ${xe(reason)}` : "";
+      return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto${reasonText} ]</w:t></w:r></w:p></w:tc>`;
+    }
   }
-  rels += `\n</Relationships>`;
 
-  // Dimensi gambar (EMU): lebar penuh kolom kanan, rasio 4:3
-  const W = 6400000;
-  const H = 4800000;
+  function makeNameCell(colW: number, desaName: string) {
+    return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:t>${xe(desaName)}</w:t></w:r></w:p></w:tc>`;
+  }
 
-  // Format tanggal
-  const fmtDate = (d: string) => {
-    const [y, m, day] = d.split("-");
-    return `${day}/${m}/${y}`;
-  };
+  function makeEmptyCell(colW: number) {
+    return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p></w:tc>`;
+  }
 
-  // Buat baris tabel per desa
-  const rows = DESAS.map((desa, i) => {
-    const bg = i % 2 === 0 ? "FFFFFF" : "D8F3DC";
-    const img = images[desa];
-    const photoCell = img ? `
-      <w:tc>
-        <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
-        <w:p>
-          <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/></w:pPr>
-          <w:r>
-            <w:drawing>
-              <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-                <wp:extent cx="${W}" cy="${H}"/>
-                <wp:docPr id="${i+1}" name="img${i+1}"/>
-                <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                  <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                    <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                      <pic:nvPicPr>
-                        <pic:cNvPr id="${i+1}" name="img${i+1}"/>
-                        <pic:cNvPicPr/>
-                      </pic:nvPicPr>
-                      <pic:blipFill>
-                        <a:blip r:embed="${img.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
-                        <a:stretch><a:fillRect/></a:stretch>
-                      </pic:blipFill>
-                      <pic:spPr>
-                        <a:xfrm><a:off x="0" y="0"/><a:ext cx="${W}" cy="${H}"/></a:xfrm>
-                        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                      </pic:spPr>
-                    </pic:pic>
-                  </a:graphicData>
-                </a:graphic>
-              </wp:inline>
-            </w:drawing>
-          </w:r>
-        </w:p>
-      </w:tc>` : `
-      <w:tc>
-        <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
-        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:color w:val="999999"/><w:i/></w:rPr><w:t>[ Tidak ada foto${reasons[desa] ? ' - Alasan: ' + xe(reasons[desa]) : ''} ]</w:t></w:r>
-        </w:p>
-      </w:tc>`;
+  let tableRows = "";
+  for (let row = 0; row < 4; row++) {
+    const leftIdx = row * 2; const rightIdx = row * 2 + 1;
+    const leftDesa = DESAS[leftIdx] || null; const rightDesa = DESAS[rightIdx] || null;
+    const leftRel = leftDesa ? imgRels[leftIdx] : null; const rightRel = rightDesa ? imgRels[rightIdx] : null;
+    tableRows += `<w:tr><w:trPr><w:trHeight w:val="3005"/></w:trPr>${leftDesa ? makeNameCell(COL1, leftDesa) : makeEmptyCell(COL1)}${leftDesa ? makePhotoCell(COL2, leftRel, leftIdx, leftDesa) : makeEmptyCell(COL2)}${rightDesa ? makeNameCell(COL3, rightDesa) : makeEmptyCell(COL3)}${rightDesa ? makePhotoCell(COL4, rightRel, rightIdx, rightDesa) : makeEmptyCell(COL4)}</w:tr>`;
+  }
 
-    return `<w:tr>
-      <w:tc>
-        <w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/><w:vAlign w:val="center"/></w:tcPr>
-        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:b/><w:sz w:val="22"/></w:rPr><w:t>${xe(`${i+1}. ${desa}`)}</w:t></w:r>
-        </w:p>
-        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr><w:t>${xe(jenis)}</w:t></w:r>
-        </w:p>
-        <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="555555"/></w:rPr><w:t>${xe(fmtDate(tanggal))}</w:t></w:r>
-        </w:p>
-      </w:tc>
-      ${photoCell}
-    </w:tr>`;
-  }).join("\n");
+  function makeHeaderLine(label: string, value: string) {
+    return `<w:p><w:pPr><w:spacing w:after="0"/><w:tabs><w:tab w:val="left" w:pos="2268"/><w:tab w:val="left" w:pos="3261"/></w:tabs></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${label}</w:t><w:tab/><w:t>:</w:t><w:tab/><w:t>${xe(value)}</w:t></w:r></w:p>`;
+  }
 
   const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<w:document xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14">
   <w:body>
-    <w:p>
-      <w:pPr><w:jc w:val="center"/></w:pPr>
-      <w:r><w:rPr><w:b/><w:color w:val="2D6A4F"/><w:sz w:val="48"/></w:rPr>
-        <w:t>${xe(jenis.toUpperCase())}</w:t>
-      </w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:after="200"/></w:pPr>
-      <w:r><w:rPr><w:color w:val="555555"/><w:sz w:val="24"/></w:rPr>
-        <w:t>${xe(fmtDate(tanggal))} — Kecamatan Siantan</w:t>
-      </w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:spacing w:after="60"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DISUSUN OLEH    :    ${xe(TEMPLATE.penyusun)}</w:t></w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:spacing w:after="60"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DIREVIU OLEH    :    ${xe(TEMPLATE.pereviu)}</w:t></w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:spacing w:after="200"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">DISETUJUI OLEH  :    ${xe(TEMPLATE.penyetuju)}</w:t></w:r>
-    </w:p>
+    ${makeHeaderLine("DISUSUN OLEH", TEMPLATE.penyusun)}
+    ${makeHeaderLine("DIREVIU OLEH", TEMPLATE.pereviu)}
+    ${makeHeaderLine("DISETUJUI OLEH", TEMPLATE.penyetuju)}
+    <w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>
     <w:tbl>
-      <w:tblPr>
-        <w:tblW w:w="14400" w:type="dxa"/>
-        <w:tblBorders>
-          <w:top w:val="single" w:sz="6" w:color="1A3A2A"/>
-          <w:left w:val="single" w:sz="6" w:color="1A3A2A"/>
-          <w:bottom w:val="single" w:sz="6" w:color="1A3A2A"/>
-          <w:right w:val="single" w:sz="6" w:color="1A3A2A"/>
-          <w:insideH w:val="single" w:sz="4" w:color="1A3A2A"/>
-          <w:insideV w:val="single" w:sz="4" w:color="1A3A2A"/>
-        </w:tblBorders>
-      </w:tblPr>
-      <w:tblGrid>
-        <w:gridCol w:w="3600"/>
-        <w:gridCol w:w="10800"/>
-      </w:tblGrid>
-      <w:tr>
-        <w:tc>
-          <w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="2D6A4F"/></w:tcPr>
-          <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="24"/></w:rPr><w:t>NAMA DESA</w:t></w:r>
-          </w:p>
-        </w:tc>
-        <w:tc>
-          <w:tcPr><w:tcW w:w="10800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="2D6A4F"/></w:tcPr>
-          <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="24"/></w:rPr><w:t>DOKUMENTASI FOTO</w:t></w:r>
-          </w:p>
-        </w:tc>
-      </w:tr>
-      ${rows}
+      <w:tblPr><w:tblW w:w="${TBL_W}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>
+      <w:tblGrid><w:gridCol w:w="${COL1}"/><w:gridCol w:w="${COL2}"/><w:gridCol w:w="${COL3}"/><w:gridCol w:w="${COL4}"/></w:tblGrid>
+      ${tableRows}
     </w:tbl>
-    <w:p><w:pPr><w:spacing w:before="400"/></w:pPr></w:p>
-    <w:sectPr>
-      <w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>
-      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
-    </w:sectPr>
+    <w:p/>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
   </w:body>
 </w:document>`;
 
-  zip.file("word/document.xml", docXml);
-  zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:docDefaults>
-    <w:rPrDefault><w:rPr>
-      <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
-      <w:sz w:val="22"/>
-    </w:rPr></w:rPrDefault>
-    <w:pPrDefault><w:pPr>
-      <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
-    </w:pPr></w:pPrDefault>
-  </w:docDefaults>
-</w:styles>`);
-  zip.file("word/_rels/document.xml.rels", rels);
-  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="jpeg" ContentType="image/jpeg"/>
-  <Default Extension="png" ContentType="image/png"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-</Types>`);
-  zip.file("word/_rels/document.xml.rels", rels);
-  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>`);
+  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="id-ID"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+</w:styles>`;
+
+  zip.folder("word"); zip.folder("word/media"); zip.folder("word/_rels"); zip.folder("_rels");
+  zip.file("word/document.xml", docXml);
+  zip.file("word/styles.xml", stylesXml);
+  zip.file("word/_rels/document.xml.rels", relsXml);
+  for (const [name, b64] of Object.entries(imageParts)) { zip.file(`word/${name}`, b64, { base64: true }); }
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
+  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
 
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", compression: "DEFLATE", compressionOptions: { level: 6 } });
   const url = URL.createObjectURL(blob);
