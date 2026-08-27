@@ -591,7 +591,7 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
             children: [
               new ImageRun({
                 data: imgData.buffer,
-                transformation: { width: 254, height: 191 },
+                transformation: { width: 180, height: 135 },
                 type: imgType as "jpg" | "png",
               }),
             ],
