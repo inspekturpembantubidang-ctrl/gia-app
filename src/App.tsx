@@ -566,20 +566,21 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     } catch { return null; }
   }
 
-  for (let i = 0; i < DESAS.length; i++) {
-    const photo = desaPhotos[DESAS[i]];
-    if (photo) {
-      const result = await fetchFotoBase64(photo.fileId);
-      if (result) {
-        const { b64, mime } = result;
-        const ext = mime === "image/png" ? "png" : "jpeg";
-        const rId = `rId${rIdCounter++}`;
-        const partName = `media/img${i + 1}.${ext}`;
-        imgRels.push({ rId, partName, mime });
-        imageParts[partName] = b64;
-      } else {
-        imgRels.push(null);
-      }
+  const fetchResults = await Promise.all(DESAS.map(async (desa, i) => {
+    const photo = desaPhotos[desa];
+    if (!photo) return null;
+    const result = await fetchFotoBase64(photo.fileId);
+    if (!result) return null;
+    const ext = result.mime === "image/png" ? "png" : "jpeg";
+    const rId = `rId${rIdCounter++}`;
+    const partName = `media/img${i + 1}.${ext}`;
+    return { rId, partName, ext, b64: result.b64, mime: result.mime };
+  }));
+
+  for (const r of fetchResults) {
+    if (r) {
+      imgRels.push({ rId: r.rId, partName: r.partName, mime: r.mime });
+      imageParts[r.partName] = r.b64;
     } else {
       imgRels.push(null);
     }
