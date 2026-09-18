@@ -566,15 +566,19 @@ async function generateDocx(jenis: string, tanggal: string, desaPhotos: Record<s
     } catch { return null; }
   }
 
-  const fetchResults = await Promise.all(DESAS.map(async (desa, i) => {
+  const desaEntries = DESAS.map((desa, i) => {
     const photo = desaPhotos[desa];
-    if (!photo) return null;
-    const result = await fetchFotoBase64(photo.fileId);
+    const rId = `rId${rIdCounter++}`;
+    const partName = `media/img${i + 1}`;
+    return { desa, photo, rId, partName, idx: i };
+  });
+
+  const fetchResults = await Promise.all(desaEntries.map(async (entry) => {
+    if (!entry.photo) return null;
+    const result = await fetchFotoBase64(entry.photo.fileId);
     if (!result) return null;
     const ext = result.mime === "image/png" ? "png" : "jpeg";
-    const rId = `rId${rIdCounter++}`;
-    const partName = `media/img${i + 1}.${ext}`;
-    return { rId, partName, ext, b64: result.b64, mime: result.mime };
+    return { rId: entry.rId, partName: `${entry.partName}.${ext}`, ext, b64: result.b64, mime: result.mime };
   }));
 
   for (const r of fetchResults) {
