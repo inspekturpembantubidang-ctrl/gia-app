@@ -964,11 +964,11 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
 // ─── APIP PORTAL ─────────────────────────────────────────────────────────────
 function ApipPortal({ onBack }: { onBack: () => void }) {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => !!localStorage.getItem("gia_apip_auth"));
   const [loginError, setLoginError] = useState("");
   const [loginInput, setLoginInput] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loginUser, setLoginUser] = useState("");
+  const [loginUser, setLoginUser] = useState(() => localStorage.getItem("gia_apip_user") || "");
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   const [expandedDesa, setExpandedDesa] = useState<string | null>(null);
@@ -1044,6 +1044,8 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
       if (data.success) {
         setAuthed(true);
         setLoginUser(data.nama || "APIP");
+        localStorage.setItem("gia_apip_auth", "1");
+        localStorage.setItem("gia_apip_user", data.nama || "APIP");
       } else {
         setLoginError(data.error || "Password salah. Silakan coba lagi.");
       }
@@ -1351,6 +1353,8 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [role, setRole] = useState<string | null>(null);
+  // Pre-warm Apps Script saat halaman dibuka (hilangkan cold start)
+  useEffect(() => { fetch(`${APPS_SCRIPT_URL}?action=ping`, { mode: "no-cors" }).catch(() => {}); }, []);
   return (
     <>
       <style>{css}</style>
