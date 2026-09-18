@@ -28,7 +28,7 @@ const PIC_DATA: Record<string, { nama: string; hp: string }> = {
   "Desa Tarempa Barat Daya": { nama: "REBO YANTO",                hp: "82364825147"   },
   "Desa Tarempa Selatan":    { nama: "Marina",                     hp: "081356168793"  },
   "Desa Tarempa Timur":      { nama: "Desi Mainila Sari",          hp: "085271643443"  },
-  "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "0812070420122" },
+  "Kelurahan Tarempa":       { nama: "Agustina Aryantani, S.I.P", hp: "081270420122" },
 };
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
