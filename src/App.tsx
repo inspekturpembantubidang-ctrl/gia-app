@@ -904,7 +904,12 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
               <div className="select-wrap">
                 <select className="field-select" value={jenis} onChange={e => setJenis(e.target.value)}>
                   <option value="">— Pilih kategori —</option>
-                  {JENIS_KEGIATAN.map(j => <option key={j}>{j}</option>)}
+                  {JENIS_KEGIATAN.map(j => {
+                    const isDisabled = 
+                      (new Date().getDay() === 5 && j === "Selasa Goro") ||
+                      (new Date().getDay() === 2 && j === "Jum'at Bersih");
+                    return <option key={j} disabled={isDisabled}>{j}</option>;
+                  })}
                 </select>
                 <span className="msymbol">cleaning_services</span>
               </div>
