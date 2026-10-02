@@ -1024,7 +1024,6 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
     setFetchStatus("loading");
     setFetchError("");
     setDriveData({});
-    setSelectedPhotos({});
 
     try {
       const url = `${APPS_SCRIPT_URL}?action=getStatusSemua&jenis=${encodeURIComponent(jenis)}&tanggal=${encodeURIComponent(tanggal)}`;
