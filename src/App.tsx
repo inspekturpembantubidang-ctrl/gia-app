@@ -978,6 +978,33 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const [expandedDesa, setExpandedDesa] = useState<string | null>(null);
   // selectedPhotos sekarang menyimpan DrivePhoto, bukan string
   const [selectedPhotos, setSelectedPhotos] = useState<Record<string, DrivePhoto | null>>({});
+  // Persist selected photos ke localStorage agar tidak hilang saat refresh/ditutup
+  useEffect(() => {
+    const stored = localStorage.getItem("gia_selected_photos");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        // Konversi kembali dari stored format ke DrivePhoto objects
+        const reconstructed: Record<string, DrivePhoto | null> = {};
+        parsed.forEach((item: any) => {
+          if (item) {
+            reconstructed[item.desa] = { fileId: item.fileId, url: item.url, filename: item.filename };
+          } else {
+            reconstructed[item.desa] = null;
+          }
+        });
+        setSelectedPhotos(reconstructed);
+      } catch (e) {
+        console.error("Gagal restore selected photos from localStorage", e);
+      }
+    }
+  }, []);
+
+  // Simpan selectedPhotos ke localStorage setiap kali berubah
+  useEffect(() => {
+    const toStore = Object.entries(selectedPhotos).map(([desa, photo]) => photo ? { desa, fileId: photo.fileId, url: photo.url, filename: photo.filename } : null);
+    localStorage.setItem("gia_selected_photos", JSON.stringify(toStore));
+  }, [selectedPhotos]);
   const [fetchStatus, setFetchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [fetchError, setFetchError] = useState("");
   const [driveData, setDriveData] = useState<Record<string, DrivePhoto[]>>({});
