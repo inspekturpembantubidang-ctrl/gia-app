@@ -4,18 +4,27 @@ import { useState, useRef, useCallback, useEffect } from "react";
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLuABL1wfEMuBzB0RtelyDKDcvo5eJUtABYwPeqTfog7I9lthiOQsslwgVEim6pT-f/exec";
 
 export const DESAS_DATA = [
-  { nama: "Desa Pesisir Timur",      hp: "6282268484231" },
-  { nama: "Desa Sri Tanjung",         hp: "6282213508920" },
-  { nama: "Desa Tarempa Barat",       hp: "6282387787403" },
-  { nama: "Desa Tarempa Barat Daya",  hp: "6282364825147" },
-  { nama: "Desa Tarempa Selatan",     hp: "6281356168793" },
-  { nama: "Desa Tarempa Timur",       hp: "6288272195261" },
-  { nama: "Kelurahan Tarempa",        hp: "6281270420122" },
+  { nama: "Desa Pesisir Timur",      hp: "82268484231" },
+  { nama: "Desa Sri Tanjung",         hp: "82213508920" },
+  { nama: "Desa Tarempa Barat",       hp: "082387787403"  },
+  { nama: "Desa Tarempa Barat Daya",  hp: "82364825147"   },
+  { nama: "Desa Tarempa Selatan",     hp: "081356168793"  },
+  { nama: "Desa Tarempa Timur",       hp: "085271643443"  },
+  { nama: "Kelurahan Tarempa",        hp: "081270420122" },
 ];
 // Backward-compat: array nama saja (dipakai di banyak tempat)
 const DESAS = DESAS_DATA.map(d => d.nama);
 
 const JENIS_KEGIATAN = ["Jum'at Bersih", "Selasa Goro"];
+
+  // Auto-disable opsi hari yang salah berdasarkan tanggal sekarang
+  // Jika hari Jumat → Selasa Goro disabled
+  // Jika hari Selasa → Jum'at Bersih disabled
+  useEffect(() => {
+    const hariIni = new Date().getDay(); // 5=Jumat, 2=Selasa
+    const disabledJumAtBersih = hariIni === 5; // Jika Jumat, disable Jum'at Bersih
+    const disabledSelasaGoro = hariIni === 2; // Jika Selasa, disable Selasa Goro
+  }, []);
 
 const TEMPLATE = {
   penyusun: "YOPI PALINTINO, S.T.",
@@ -1475,7 +1484,12 @@ function ApipPortal({ onBack }) {
               <div className="select-wrap">
                 <select className="field-select" value={jenis} onChange={e => { setJenis(e.target.value); setSelectedPhotos({}); setReasons({}); }}>
                   <option value="">— Pilih jenis —</option>
-                  {JENIS_KEGIATAN.map(j => <option key={j}>{j}</option>)}
+                  {JENIS_KEGIATAN.map(j => {
+                    const hariIni = new Date().getDay();
+                    const disabledJumAt = hariIni === 5 && j === "Jum'at Bersih";
+                    const disabledSelasa = hariIni === 2 && j === "Selasa Goro";
+                    return <option key={j} disabled={disabledJumAt || disabledSelasa}>{j}</option>;
+                  })}
                 </select>
                 <span className="msymbol">expand_more</span>
               </div>
