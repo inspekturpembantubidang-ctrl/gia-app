@@ -1014,6 +1014,9 @@ function ApipPortal({ onBack }: { onBack: () => void }) {
   const { msg: toastMsg, visible: toastVisible, show: showToast } = useToast();
 
   const selectedCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length + Object.keys(reasons).filter(d => reasons[d] && !selectedPhotos[d]).length;
+  // Hitung berapa foto yang sudah dipilih dari 9 desa
+  const totalDesas = DESAS.length;
+  const selectedDesasCount = Object.keys(selectedPhotos).filter(d => selectedPhotos[d]).length;
 
   // ✅ FIXED: Fetch foto langsung dari Google Drive via Apps Script
   const fetchPhotos = useCallback(async () => {
