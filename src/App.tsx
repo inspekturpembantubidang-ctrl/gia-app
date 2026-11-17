@@ -57,6 +57,40 @@ function fileToDataURL(file: File): Promise<string> {
   });
 }
 
+// Kompres foto sebelum dikirim: skala maks MAX_DIM px + JPEG quality 0.8,
+// agar payload kecil dan bisa diupload lewat jaringan desa yang lemah.
+const MAX_DIM = 1600;
+const JPEG_QUALITY = 0.8;
+const SKIP_COMPRESS_BYTES = 300 * 1024; // foto < 300KB tidak perlu diproses
+
+function compressImage(file: File): Promise<{ dataUrl: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    if (file.size <= SKIP_COMPRESS_BYTES) {
+      fileToDataURL(file)
+        .then(dataUrl => resolve({ dataUrl, mimeType: file.type || "image/jpeg" }))
+        .catch(reject);
+      return;
+    }
+    fileToDataURL(file).then(dataUrl => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Browser tidak mendukung kompresi foto"));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+        if (!out.startsWith("data:image/")) return reject(new Error("Gagal mengompres foto"));
+        resolve({ dataUrl: out, mimeType: "image/jpeg" });
+      };
+      img.onerror = () => reject(new Error("Foto tidak dapat dibaca browser"));
+      img.src = dataUrl;
+    }).catch(reject);
+  });
+}
+
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Lora:ital,wght@0,600;1,500&display=swap');
@@ -713,7 +747,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
   const [desa, setDesa] = useState("");
   const [jenis, setJenis] = useState("");
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
-  const [photos, setPhotos] = useState<{ file: File; dataUrl: string }[]>([]);
+  const [photos, setPhotos] = useState<{ file: File; dataUrl: string; mimeType: string }[]>([]);
   const [screen, setScreen] = useState("form");
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [uploadStatus, setUploadStatus] = useState("");
@@ -725,10 +759,13 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
-    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024);
-    const tooLarge = Array.from(files).filter(f => f.size > 10 * 1024 * 1024);
-    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 10mb)`);
-    const newPhotos = await Promise.all(valid.map(async (f) => ({ file: f, dataUrl: await fileToDataURL(f) })));
+    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 30 * 1024 * 1024);
+    const tooLarge = Array.from(files).filter(f => f.size > 30 * 1024 * 1024);
+    if (tooLarge.length) showToast(`${tooLarge.length} file terlalu besar (maks 30mb)`);
+    const newPhotos = await Promise.all(valid.map(async (f) => {
+      const { dataUrl, mimeType } = await compressImage(f);
+      return { file: f, dataUrl, mimeType };
+    }));
     setPhotos(p => [...p, ...newPhotos].slice(0, 10));
   }, [showToast]);
 
@@ -746,11 +783,11 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
         const p = photos[i];
         setUploadStatus(`Mengirim foto ${i + 1} dari ${photos.length}...`);
 
-        const b64 = await fileToBase64(p.file);
+        const b64 = p.dataUrl.split(",")[1];
         const payload = {
           desa, jenis, tanggal,
-          filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.${p.file.name.split(".").pop()}`,
-          mimeType: p.file.type,
+          filename: `${desa.replace(/\s+/g, "_")}_${jenis.replace(/[^a-zA-Z0-9]/g, "_")}_${tanggal}_foto${i + 1}.jpg`,
+          mimeType: p.mimeType,
           base64: b64,
         };
 
@@ -941,7 +978,7 @@ function DesaPortal({ onBack }: { onBack: () => void }) {
               <span className="msymbol lg" style={{ color: "var(--sage)" }}>add_a_photo</span>
             </div>
             <div className="dropzone-title">Tarik foto ke sini atau klik untuk memilih</div>
-            <div className="dropzone-sub">Maks 10 foto · JPG, PNG · Maks 10mb per file</div>
+            <div className="dropzone-sub">Maks 10 foto · JPG, PNG · foto otomatis dikompres sebelum dikirim</div>
           </div>
           {photos.length > 0 && (
             <div className="photo-grid">
